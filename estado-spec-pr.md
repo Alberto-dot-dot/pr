@@ -2,10 +2,10 @@
  
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
  
-**Versión:** S2 → S3, fecha 2026-06-17.
-**Sesión de origen:** Bloque 2 (Domain) — cierre de #2 (llave de join e identidad de id_tipologia).
+**Versión:** S3 → S4, fecha 2026-06-17.
+**Sesión de origen:** Bloque 2 (Domain) — cierre provisional de #12 (no-match referencial en join PR↔mapeo).
 **Módulo en foco:** PR — scope-lock activo (un solo módulo hasta PENDIENTE crítico vacío)
-**Estado global:** reglas de negocio definidas: 7 (R1–R7) + R3.1, R6.1 bordes
+**Estado global:** reglas de negocio definidas: 8 (R1–R8) + R3.1, R6.1 bordes
 **Test de verificabilidad (Definition of Done):** una regla está DEFINIDA si y solo si se expresa como
 `DADO [precondición] CUANDO [evento] ENTONCES el sistema DEBE [resultado observable]`, sin huecos.
 Si no, va a PENDIENTE. No se juzga ambigüedad por intuición; se aplica este test.
@@ -46,8 +46,8 @@ Semántica de niveles declarada: N1 frente de trabajo · N2 edificio/torre · N3
  
 ## 4. SALIDA OBJETIVO (DECLARADA, parcialmente indefinida)
  
-1. **Append PR Finalizado** — PR vigentes con estatus "FINALIZADA". Esquema declarado: `[id_actividad, id_tipologia, count unidades] → [obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64, count_unidades:UInt32]`.
-2. **Append PR Programado** — PR vigentes con estatus "Nueva". Esquema declarado: `[obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64, fecha_inicio:Date, count_unidades:UInt32]`.
+1. **Append PR Finalizado** — PR vigentes con estatus "FINALIZADA". Esquema declarado: `[id_actividad, id_tipologia, count unidades] → [obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64 (nullable; null = NO_MATCH), count_unidades:UInt32]`.
+2. **Append PR Programado** — PR vigentes con estatus "Nueva". Esquema declarado: `[obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64 (nullable; null = NO_MATCH), fecha_inicio:Date, count_unidades:UInt32]`.
 3. **Reporte desnormalizado (humano)** — unión de ambos estados, desnormalizada. Esquema declarado: `[usar, estatus, nombre_actividad, nivel_1..5, fecha_inicio, macropartida, obra:Utf8]`.
 > Términos indefinidos dentro de esta sección: `count unidades`, semántica de `fecha_inicio` por estatus. Ver auditoría.
 
@@ -132,6 +132,21 @@ R7 [join, cierra #2] DADO una fila de PR con sus cinco niveles
    obra_norm del mapeo se deriva de su columna Obra cruda vía R5; R3 no aplica al
    mapeo (no hay parseo de nombre de archivo).
 
+R8 [cierra #12, provisional] DADO una fila de PR cuya llave (obra_norm, N1_norm..N5_norm)
+   no tiene contraparte en el mapeo de tipologías
+   CUANDO se ejecuta el join (R7)
+   ENTONCES el sistema DEBE conservar la fila, asignar id_tipologia = null,
+   marcar tipologia_status = NO_MATCH, y registrar la fila en el reporte de
+   reconciliación, sin descartarla ni detener el pipeline.
+   tipologia_status es un enum binario por fila {MATCHED, NO_MATCH}: las filas
+   con match llevan MATCHED. Garantiza auditabilidad; ninguna señal queda implícita.
+   El reporte de reconciliación DEBE contener al menos las tuplas distintas de
+   ubicación sin match (obra + N1..N5); esquema fino y destino → Bloque 3.
+   Disposición no-lossy (no se elimina dato). Provisional: la elección
+   complete-vs-clean depende del contrato de consumo (E, EN DISPUTA); el default
+   no-lossy preserva ambas salidas (filtrar NO_MATCH = volumen limpio; conservar
+   = volumen completo).
+
 ## 6. AUDITORÍA — GRIETAS ABIERTAS
 
 "AUDITORÍA es descriptiva; el LEDGER (§8) es autoritativo para estado" 
@@ -188,6 +203,11 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 - DECISIÓN: el sistema confía en que el analista ingresa Obra
   correctamente; validación nombre_archivo ↔ columna Obra diferida a
   diseño futuro. Riesgo de null por desajuste: aceptado conscientemente.
+- Disposición del no-match referencial PR↔mapeo (provisional): fila se
+  conserva, id_tipologia = null + tipologia_status = NO_MATCH (enum
+  binario por fila {MATCHED, NO_MATCH}) + reporte de reconciliación.
+  No-lossy. [A] (R8) Dependiente de E (EN DISPUTA): default no-lossy bajo
+  incertidumbre del consumidor.
 
 ### PARCIALMENTE DEFINIDO
 
@@ -197,19 +217,16 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
    (anchor: declarar si el filtro opera sobre crudo o sobre _norm.)
 5. Semántica de USAR (valores y efecto). [B]
 6. Definición de "unidad" y nivel de agrupación del count. [C]
-   (anchor: id_tipologia es identidad-de-tipología (R6); el grano de R4
-   (obra_norm, id_actividad) debe reconciliarse con la presencia de
-   id_tipologia en el output de tabla 1.)
+   (anchor: id_tipologia es identidad-de-tipología (R6); con R8, null en
+   id_tipologia es valor de output legítimo (NO_MATCH). El grano de R4
+   (obra_norm, id_actividad) DEBE modificarse para preservar la distinción
+   matched/NO_MATCH al agregar, o colapsa filas con tipología real contra
+   filas sin ella. Grano nuevo: pendiente en #6.)
 7. Semántica de FECHA/fecha_inicio por estatus. [C]
 8. Universalidad de la precondición estructural de parseo (5 filas + 1
    columna vacías). [F]
 10. Frontera GCP+Polars ↔ PQ/Sheets y ubicación de fuentes/outputs. [D] (Bloque 3)
 11. Mecanismo de resolución de "versión vigente". [D] (Bloque 3)
-12. Disposición del no-match referencial en el join PR↔mapeo: fila de PR
-    cuya llave no existe en el mapeo → id_tipologia null. [A]
-    (anchor: R6.1 atiende fila-existe-tipología-vacía, NO fila-ausente;
-    propuesta candidata: enrutar a cola de anomalías al estilo R2/R3.1,
-    sin generar id. Requiere ratificación.)
 
 ### EN DISPUTA
 - Posición de PR en el grafo de dependencias del sistema PLAN.
@@ -226,3 +243,5 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 **S2 — 2026-06-16**: cierre de #1 y #9. Decisiones: id_actividad = FNV-1a-64 sobre texto normalizado; consolidado multiobra Camino B; pipeline de normalización de 10 pasos. "#3 cerrado — obra = string antes del primer ''; obra_norm por R5; guard R3.1 para nombre sin ''.". Proximo foco #3.
 
 **S3 — 2026-06-17**: cierre de #2. Llave de join PR↔mapeo = (obra_norm, N1_norm..N5_norm) sobre _norm; id_tipologia = FNV-1a-64(obra_norm + "|" + tipologia_norm), UInt64, orden fijo; guard fail-fast R6.1 para tipología vacía en mapeo; mapeo = archivo por obra, obra_norm desde columna Obra cruda. Surgió grieta nueva #12. Próximo foco candidato: #12, luego barrer #4/#5.
+
+**S4 — 2026-06-17**: cierre provisional de #12. Disposición no-lossy del no-match referencial: fila se conserva, id_tipologia = null + tipologia_status = NO_MATCH (enum binario por fila) + reporte de reconciliación (R8). Consecuencias: id_tipologia pasa a UInt64 nullable en §4; #6 se agudiza (el grano debe preservar matched/NO_MATCH). Provisional, dependiente de E (contrato de consumo, EN DISPUTA). Próximo foco candidato: barrer #4/#5.
