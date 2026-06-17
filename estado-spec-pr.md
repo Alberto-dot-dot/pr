@@ -2,10 +2,10 @@
 
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
 
-**Versión:** S4 → S5, fecha 2026-06-17.
-**Sesión de origen:** Bloque 2 (Domain) — cierre de #4 (gobernanza del filtro de vigencia, ruteo Finalizado/Programado, disposición residual no-lossy, contrato de tipo en ingesta para ESTATUS C.CLOUD, y mapeo del campo estatus en la tabla 3).
+**Versión:** S5 → S6, fecha 2026-06-17.
+**Sesión de origen:** Bloque 2 (Domain) — cierre de #5 (dominio y gating destructivo de USAR upstream de toda la tubería; exclusión de la columna usar en el esquema de Tabla 3).
 **Módulo en foco:** PR — scope-lock activo (un solo módulo hasta PENDIENTE crítico vacío)
-**Estado global:** reglas de negocio definidas: 13 (R1–R13) + R3.1, R6.1 bordes
+**Estado global:** reglas de negocio definidas: 15 (R1–R15) + R3.1, R6.1 bordes
 **Test de verificabilidad (Definition of Done):** una regla está DEFINIDA si y solo si se expresa como
 `DADO [precondición] CUANDO [evento] ENTONCES el sistema DEBE [resultado observable]`, sin huecos.
 Si no, va a PENDIENTE. No se juzga ambigüedad por intuición; se aplica este test.
@@ -48,10 +48,40 @@ Semántica de niveles declarada: N1 frente de trabajo · N2 edificio/torre · N3
 
 1. **Append PR Finalizado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R9 (criterio completo: 5.2/R9; ya no se reduce a la literal única "FINALIZADA"). Esquema declarado: `[id_actividad, id_tipologia, count unidades] → [obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64 (nullable; null = NO_MATCH), count_unidades:UInt32]`.
 2. **Append PR Programado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R10 (criterio completo: 5.2/R10). Esquema declarado: `[obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64 (nullable; null = NO_MATCH), fecha_inicio:Date, count_unidades:UInt32]`.
-3. **Reporte desnormalizado (humano)** — unión de ambos estados, desnormalizada. Esquema declarado: `[usar, estatus, nombre_actividad, nivel_1..5, fecha_inicio, macropartida, obra:Utf8]`. El campo `estatus` se puebla exclusivamente desde `ESTATUS C.CLOUD` crudo, sin transformación (R12). Ningún otro campo de esta tabla cambia de fuente: la tabla 3 conserva, sin excepciones, el contrato original de consumir columnas crudas en su totalidad (decisión explícita de la sesión S5 — ver bitácora).
+3. **Reporte desnormalizado (humano)** — unión de ambos estados, desnormalizada. Esquema declarado: `[estatus, nombre_actividad, nivel_1..5, fecha_inicio, macropartida, obra:Utf8]`. La columna usar se excluye del esquema de salida: toda fila sobreviviente al gate de R14 tiene USAR=="SI" por construcción, por lo que la columna sería constante y no informativa (R15). 
+El campo `estatus` se puebla exclusivamente desde `ESTATUS C.CLOUD` crudo, sin transformación (R12). Ningún otro campo de esta tabla cambia de fuente: la tabla 3 conserva, sin excepciones, el contrato original de consumir columnas crudas en su totalidad (decisión explícita de la sesión S5 — ver bitácora).
 > Términos indefinidos dentro de esta sección: `count unidades`, semántica de `fecha_inicio` por estatus. Ver auditoría.
 
 ## 5. REGLAS DE NEGOCIO — DOMAIN (Bloque 2)
+
+### 5.0 Contrato de Gating — USAR [cierra #5]
+
+Gobernanza: el dominio de valores de USAR se declara cerrado y binario,
+{SI, NO}, sin variantes observadas. La evaluación del gate se ejecuta
+contra el valor crudo de USAR; la columna no genera contraparte _norm
+bajo el pipeline 5.1 (excepción explícita a R5).
+
+R14 [cierra #5, gating] DADO una fila de PR cuyo valor crudo de USAR es distinto de "SI"
+   CUANDO se ingesta el archivo
+   ENTONCES el sistema 
+   DEBE evictar la fila de forma completa y permanente
+   antes de ejecutar 5.1 (normalización), R1 (hash id_actividad), R7 (join
+   de tipología) y R9–R11 (filtro de vigencia), sin generar conteo, log, ni
+   artefacto de reconciliación. La comparación se ejecuta contra el valor
+   crudo; USAR no genera columna _norm. Excepción explícita a la postura
+   no-lossy del sistema, de signo opuesto a R8/R11: riesgo aceptado de
+   pérdida silenciosa de filas válidas ante variación de casing o
+   espacios, bajo el supuesto declarado de dominio cerrado {SI, NO}.
+
+R15 [cierra #5, esquema Tabla 3] DADO que toda fila sobreviviente a R14
+   tiene USAR=="SI" por construcción
+   CUANDO se define el esquema de salida de la Tabla 3 (reporte
+   desnormalizado)
+   ENTONCES el sistema DEBE excluir la columna usar de dicho esquema.
+   Esquema actualizado en sección 4:
+   [estatus, nombre_actividad, nivel_1..5, fecha_inicio, macropartida, obra:Utf8].
+   Esta exclusión es específica a usar y no establece precedente para
+   ninguna otra columna; ESTATUS C.CLOUD permanece en Tabla 3 vía R12.
 
 R1 [cierra #1] DADO una fila de PR con ACTIVIDAD no nula
    CUANDO se construye su identidad
@@ -202,7 +232,7 @@ R12 [cierra #4, mapeo de salida — tabla humana] DADO que la tabla 3 consume
 
 ~~**A. Identidad y llaves (núcleo).** Regla de construcción de `id_actividad` no declarada. Llave de join de `id_tipologia` contra mapeo de tipologías no declarada (¿5 niveles, subconjunto, ACTIVIDAD?). Llave de `obra` inexistente en todo esquema declarado, pese a que el output es "por cada obra".~~
 
-**B. Filtrado y estatus (parcial).** ~~Dos columnas de estatus (`ESTATUS`, `ESTATUS C.CLOUD`): cuál gobierna el filtro no está declarado.~~ Resuelto: `ESTATUS C.CLOUD` gobierna en exclusiva (5.2, R9–R13). ~~Filas fuera de {FINALIZADA, Nueva}: destino no declarado (riesgo de drop silencioso).~~ Resuelto: cola de reconciliación no-lossy, homologada a R8 (R11). Pendiente: semántica de `USAR` (valores y efecto) — ver #5.
+~~**B. Filtrado y estatus.** Dos columnas de estatus (`ESTATUS`, `ESTATUS C.CLOUD`): cuál gobierna el filtro no está declarado. Resuelto: `ESTATUS C.CLOUD` gobierna en exclusiva (5.2, R9–R13). Filas fuera de {FINALIZADA, Nueva}: destino no declarado (riesgo de drop silencioso). Resuelto: cola de reconciliación no-lossy, homologada a R8 (R11). Semántica de `USAR` (valores y efecto). Resuelto: gate destructivo upstream de toda la tubería, comparación contra valor crudo sin _norm, sin auditoría — excepción explícita a la postura no-lossy (R14); exclusión de la columna usar en el esquema de Tabla 3 (R15).~~
  
 **C. Agregación.** "Unidad" no definida; nivel de agrupación del count no declarado. `FECHA` cambia de significado según estatus (Programado conserva fecha, Finalizado la descarta) sin regla declarada.
  
@@ -275,6 +305,16 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   3 consume columnas crudas en su totalidad; se evaluó y se rechazó
   explícitamente una enmienda global al contrato 5.1 que habría migrado la
   tabla 3 completa a consumir _norm. [B] (R12)
+- Contrato de gating de USAR: dominio cerrado {SI, NO}, evaluado contra
+  valor crudo (sin _norm); gate destructivo posicionado upstream de toda
+  la tubería (antes de 5.1, R1, R7, R9–R11); excepción explícita y
+  deliberada a la postura no-lossy del sistema, sin conteo, log ni
+  artefacto de reconciliación — riesgo aceptado de pérdida silenciosa ante
+  variación de casing/espacios. [B] (R14)
+- Esquema de salida de la Tabla 3 actualizado: exclusión de la columna
+  usar (constante y no informativa tras el gate de R14). Esquema vigente:
+  [estatus, nombre_actividad, nivel_1..5, fecha_inicio, macropartida,
+  obra:Utf8]. [B] (R15)
 
 ### PARCIALMENTE DEFINIDO
 - Canonicalización de `""` vs `null` en ESTATUS C.CLOUD. Ambos valores ya
@@ -286,7 +326,6 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   3 (R12), que al consumir el valor crudo sí distingue entre ambos.
 
 ### PENDIENTE (crítico — bloquea generación de archivos)
-5. Semántica de USAR (valores y efecto). [B]
 6. Definición de "unidad" y nivel de agrupación del count. [C]
    (anchor: id_tipologia es identidad-de-tipología (R6); con R8, null en
    id_tipologia es valor de output legítimo (NO_MATCH). El grano de R4
@@ -318,3 +357,5 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 **S4 — 2026-06-17**: cierre provisional de #12. Disposición no-lossy del no-match referencial: fila se conserva, id_tipologia = null + tipologia_status = NO_MATCH (enum binario por fila) + reporte de reconciliación (R8). Consecuencias: id_tipologia pasa a UInt64 nullable en §4; #6 se agudiza (el grano debe preservar matched/NO_MATCH). Provisional, dependiente de E (contrato de consumo, EN DISPUTA). Próximo foco candidato: barrer #4/#5.
 
 **S5 — 2026-06-17**: cierre de #4. Decisiones: ESTATUS C.CLOUD gobierna el filtro de vigencia en exclusiva, ESTATUS sin autoridad alguna; comparación del filtro exclusivamente contra _norm; conjuntos de ruteo declarados para Finalizado (R9) y Programado (R10); disposición residual no-lossy para estatus no reconocidos, homologada a R8 (R11); contrato de tipo en ingesta para ESTATUS C.CLOUD — cast forzado a Utf8 antes de 5.1, null preservado, valor numérico siempre literal "0" (R13); campo estatus de la tabla 3 mapea exclusivamente desde ESTATUS C.CLOUD crudo (R12). Nota de proceso: se evaluó y se rechazó explícitamente una enmienda global al contrato 5.1 que habría migrado la tabla 3 completa a consumir _norm — la tabla 3 conserva su contrato original de columnas crudas, sin excepciones, porque es la única tabla cuya función es ser leída por un humano. Abierto, no bloqueante: canonicalización `""` vs `null` en ESTATUS C.CLOUD; identidad exacta del artefacto de reconciliación de R11, diferida a Bloque 3 junto con R8. Próximo foco candidato: #5 (semántica de USAR) o #6/#7/#8, a decisión de Alberto.
+
+**S6 — 2026-06-17**: cierre de #5. Decisiones: USAR es dominio cerrado y binario {SI, NO}, sin variantes observadas; gate destructivo posicionado upstream de toda la tubería (antes de 5.1, R1, R7, R9–R11) (R14); comparación contra el valor crudo, sin generar USAR_norm — excepción deliberada a la postura no-lossy del sistema (sin conteo, log ni cola de reconciliación), riesgo aceptado de pérdida silenciosa por casing/espacios; esquema de Tabla 3 actualizado para excluir la columna usar, al volverse constante tras el filtro (R15). Conexión señalada y no abierta: el gate de R14 precede a la agregación de R4, por lo que count_unidades en Tablas 1 y 2 solo contará filas con USAR=="SI" — relevante para #6 (grano), aún pendiente. Próximo foco candidato: #6 (semántica de "unidad" y grano del count), #7 (semántica de FECHA por estatus) o #8 (universalidad de la precondición estructural de parseo), a decisión de Alberto.
