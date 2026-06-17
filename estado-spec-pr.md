@@ -1,32 +1,32 @@
 # ESTADO DE SPEC — MÓDULO PR
- 
+
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
- 
-**Versión:** S3 → S4, fecha 2026-06-17.
-**Sesión de origen:** Bloque 2 (Domain) — cierre provisional de #12 (no-match referencial en join PR↔mapeo).
+
+**Versión:** S4 → S5, fecha 2026-06-17.
+**Sesión de origen:** Bloque 2 (Domain) — cierre de #4 (gobernanza del filtro de vigencia, ruteo Finalizado/Programado, disposición residual no-lossy, contrato de tipo en ingesta para ESTATUS C.CLOUD, y mapeo del campo estatus en la tabla 3).
 **Módulo en foco:** PR — scope-lock activo (un solo módulo hasta PENDIENTE crítico vacío)
-**Estado global:** reglas de negocio definidas: 8 (R1–R8) + R3.1, R6.1 bordes
+**Estado global:** reglas de negocio definidas: 13 (R1–R13) + R3.1, R6.1 bordes
 **Test de verificabilidad (Definition of Done):** una regla está DEFINIDA si y solo si se expresa como
 `DADO [precondición] CUANDO [evento] ENTONCES el sistema DEBE [resultado observable]`, sin huecos.
 Si no, va a PENDIENTE. No se juzga ambigüedad por intuición; se aplica este test.
- 
+
 ---
- 
+
 ## 1. OBJETIVO (DEFINIDO)
- 
+
 Consolidar todos los Programas Rítmicos (PR) vigentes de cada obra y dejarlos para consumo en 3 tablas, migrando el pipeline desde Power Query / M Language a un entorno de cómputo en la nube con procesamiento columnar. Sustituye un proceso local actual de >6 min por ejecución.
- 
+
 ## 2. DRIVER (DEFINIDO)
- 
+
 - Latencia: actualización actual >6 min, dependiente de ancho de banda y CPU local.
 - Auditabilidad: M no tiene entorno de desarrollo propio; difícil debuggear.
 - Automatización ausente: depende de clic manual; los errores se descubren tras esperar el ciclo completo.
 - Sin query folding (impacto menor).
 - Migración a entorno Workspace prevista para el próximo año; obliga a iniciar el trabajo de migración.
 > Nota de rol: el driver motiva el proyecto pero NO es especificación. "Más rápido" no entra en reglas de negocio.
- 
+
 ## 3. ENTRADA CONOCIDA (DEFINIDO como hecho declarado)
- 
+
 **Hoja de programas vigentes:** [ruta_archivo:Utf8, nombre_programa:Utf8], fuente del acrónimo de obra y de la resolución de "vigente" (toca #11). 
 
 **Programa Rítmico (PR):** programa de ejecución de obra, estandarizado en Excel. Cada PR corresponde a una macro partida.
@@ -35,20 +35,20 @@ Macro partidas declaradas (≈4; variabilidad del conjunto no confirmada → ver
 
 **Esquema crudo del PR (declarado):**
 `USAR · AO · PT · SUPERVISOR · EMPRESA · ESTATUS · ESTATUS C.CLOUD · ACTIVIDAD · Nivel 1 · Nivel 2 · Nivel 3 · Nivel 4 · Nivel 5 · TIPO ACTIVIDAD · FECHA · SEM CAL · SEM OBRA · CONT PLAN · AVANCE · DIF AVANCE · CONT REAL · DIC CONT REAL · CORTE · INDICE FRENTE · INDICE · POR ASIGNAR · ACT PEND · ACT PEND ACUM · ASIGNAR · SUG · PAC`
- 
+
 Semántica de niveles declarada: N1 frente de trabajo · N2 edificio/torre · N3 bloque · N4 piso · N5 ciclo de ejecución o departamento (nivel mínimo).
- 
+
 **Columnas obligatorias / de trabajo (declaradas):** `USAR · ESTATUS · ACTIVIDAD · NIVELES (1–5) · FECHA`
- 
+
 **Precondición estructural de parseo (declarada):** las primeras 5 filas y la primera columna del archivo están vacías. (Universalidad para todas las obras: no confirmada → PENDIENTE F.)
- 
+
 **Tabla Mapeo de Tipologías (DEFINIDA):** tabla de dimensión curada, un archivo por obra, mantenida por analista. Esquema crudo: `[N1, N2, N3, N4, N5, Tipologia, Obra]`. Llave de join contra PR: `(obra_norm, N1_norm..N5_norm)`, ejecutada sobre columnas `_norm` en ambas tablas (R7). El sistema deriva en pipeline `obra_norm, N1_norm..N5_norm, tipologia_norm, id_tipologia`; ninguna `_norm` vive en el archivo. `obra_norm` proviene de la columna Obra cruda vía R5 (no del nombre de archivo). Vacío en Tipologia → rechazo de ingesta (R6.1).
- 
+
 ## 4. SALIDA OBJETIVO (DECLARADA, parcialmente indefinida)
- 
-1. **Append PR Finalizado** — PR vigentes con estatus "FINALIZADA". Esquema declarado: `[id_actividad, id_tipologia, count unidades] → [obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64 (nullable; null = NO_MATCH), count_unidades:UInt32]`.
-2. **Append PR Programado** — PR vigentes con estatus "Nueva". Esquema declarado: `[obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64 (nullable; null = NO_MATCH), fecha_inicio:Date, count_unidades:UInt32]`.
-3. **Reporte desnormalizado (humano)** — unión de ambos estados, desnormalizada. Esquema declarado: `[usar, estatus, nombre_actividad, nivel_1..5, fecha_inicio, macropartida, obra:Utf8]`.
+
+1. **Append PR Finalizado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R9 (criterio completo: 5.2/R9; ya no se reduce a la literal única "FINALIZADA"). Esquema declarado: `[id_actividad, id_tipologia, count unidades] → [obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64 (nullable; null = NO_MATCH), count_unidades:UInt32]`.
+2. **Append PR Programado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R10 (criterio completo: 5.2/R10). Esquema declarado: `[obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64 (nullable; null = NO_MATCH), fecha_inicio:Date, count_unidades:UInt32]`.
+3. **Reporte desnormalizado (humano)** — unión de ambos estados, desnormalizada. Esquema declarado: `[usar, estatus, nombre_actividad, nivel_1..5, fecha_inicio, macropartida, obra:Utf8]`. El campo `estatus` se puebla exclusivamente desde `ESTATUS C.CLOUD` crudo, sin transformación (R12). Ningún otro campo de esta tabla cambia de fuente: la tabla 3 conserva, sin excepciones, el contrato original de consumir columnas crudas en su totalidad (decisión explícita de la sesión S5 — ver bitácora).
 > Términos indefinidos dentro de esta sección: `count unidades`, semántica de `fecha_inicio` por estatus. Ver auditoría.
 
 ## 5. REGLAS DE NEGOCIO — DOMAIN (Bloque 2)
@@ -147,13 +147,62 @@ R8 [cierra #12, provisional] DADO una fila de PR cuya llave (obra_norm, N1_norm.
    no-lossy preserva ambas salidas (filtrar NO_MATCH = volumen limpio; conservar
    = volumen completo).
 
+### 5.2 Contrato de Filtro de Vigencia — ESTATUS C.CLOUD  [cierra #4]
+
+Gobernanza: el filtro de vigencia (ruteo a Finalizado/Programado) se gobierna
+exclusivamente por la columna ESTATUS C.CLOUD. La columna ESTATUS, aunque
+presente en el esquema crudo, no tiene autoridad ni participación alguna en
+esta lógica, bajo ninguna circunstancia. Toda comparación del filtro se
+ejecuta contra el valor _norm (pipeline 5.1), nunca contra el valor crudo.
+
+R13 [cierra #4, contrato de tipo en ingesta] DADO que ESTATUS C.CLOUD puede
+   llegar desde origen con tipo subyacente incierto (texto o numérico)
+   CUANDO se ingesta el archivo de PR
+   ENTONCES el sistema DEBE forzar el cast de la columna completa a Utf8
+   antes de ejecutar cualquier paso del pipeline 5.1, preservando los
+   valores null como null (nunca como el string literal "null").
+   Declarado: el valor numérico, de existir, es siempre literalmente "0",
+   sin variantes decimales ni de formato; bajo este supuesto no se requiere
+   un paso adicional de normalización de formato flotante. Si este supuesto
+   deja de cumplirse (aparecen otros valores numéricos), esta regla debe
+   reabrirse.
+
+R9 [cierra #4, ruteo Finalizado] DADO una fila de PR
+   CUANDO ESTATUS_C_CLOUD_norm ∈ {finalizada, 2da_revision, con_fallas, revisada, en_proceso}
+   ENTONCES el sistema DEBE rutear la fila a Append PR Finalizado.
+
+R10 [cierra #4, ruteo Programado] DADO una fila de PR
+   CUANDO ESTATUS_C_CLOUD_norm ∈ {nueva, "0", null, ""}
+   ENTONCES el sistema DEBE rutear la fila a Append PR Programado.
+
+R11 [cierra #4, disposición residual, no-lossy] DADO una fila de PR cuyo
+   ESTATUS_C_CLOUD_norm no pertenece ni al conjunto de R9 ni al de R10
+   CUANDO se ejecuta el filtro
+   ENTONCES el sistema DEBE conservar la fila (no descartarla), rutearla a
+   una cola de reconciliación/excepción no-lossy, y NO asignarla a Append PR
+   Finalizado ni a Append PR Programado. Homologado en espíritu a R8: ningún
+   estatus no reconocido se pierde silenciosamente. Identidad exacta del
+   artefacto de destino (¿mismo reporte de reconciliación de R8 sirviendo dos
+   modos de fallo, o uno separado?) y su esquema fino: diferido a Bloque 3,
+   igual que R8.
+
+R12 [cierra #4, mapeo de salida — tabla humana] DADO que la tabla 3 consume
+   columnas crudas en su totalidad (reafirmación explícita del contrato 5.1,
+   sin excepciones de campo — se evaluó y se rechazó una enmienda global que
+   habría migrado la tabla 3 completa a consumir _norm, por destruir la
+   legibilidad humana que es la razón de ser de esa tabla)
+   CUANDO se puebla el campo estatus de la tabla 3
+   ENTONCES el sistema DEBE poblarlo exclusivamente con el valor crudo de
+   ESTATUS C.CLOUD, sin transformación alguna, y nunca con ESTATUS ni con su
+   forma _norm.
+
 ## 6. AUDITORÍA — GRIETAS ABIERTAS
 
 "AUDITORÍA es descriptiva; el LEDGER (§8) es autoritativo para estado" 
 
 ~~**A. Identidad y llaves (núcleo).** Regla de construcción de `id_actividad` no declarada. Llave de join de `id_tipologia` contra mapeo de tipologías no declarada (¿5 niveles, subconjunto, ACTIVIDAD?). Llave de `obra` inexistente en todo esquema declarado, pese a que el output es "por cada obra".~~
- 
-**B. Filtrado y estatus.** Dos columnas de estatus (`ESTATUS`, `ESTATUS C.CLOUD`): cuál gobierna el filtro no está declarado. Filas fuera de {FINALIZADA, Nueva}: destino no declarado (riesgo de drop silencioso). Semántica de `USAR` (valores y efecto) no declarada.
+
+**B. Filtrado y estatus (parcial).** ~~Dos columnas de estatus (`ESTATUS`, `ESTATUS C.CLOUD`): cuál gobierna el filtro no está declarado.~~ Resuelto: `ESTATUS C.CLOUD` gobierna en exclusiva (5.2, R9–R13). ~~Filas fuera de {FINALIZADA, Nueva}: destino no declarado (riesgo de drop silencioso).~~ Resuelto: cola de reconciliación no-lossy, homologada a R8 (R11). Pendiente: semántica de `USAR` (valores y efecto) — ver #5.
  
 **C. Agregación.** "Unidad" no definida; nivel de agrupación del count no declarado. `FECHA` cambia de significado según estatus (Programado conserva fecha, Finalizado la descarta) sin regla declarada.
  
@@ -191,7 +240,8 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 - Consolidación multiobra y grano de agregación (obra_norm, id_actividad). (R4)
 - Llave de obra. [A] Existe como columna generada e integra el grano
   (R3, R4). Residuo: regla de parseo del acrónimo desde nombre_programa
-  (obra = substring antes del primer "_", R3; obra_norm vía R5; guard R3.1)
+  (obra = substring antes del primer "_", R3; obra_norm vía R5; guard R3.1
+  para nombre sin "_")
 - Llave de join PR ↔ mapeo de tipologías: (obra_norm, N1_norm..N5_norm)
   sobre _norm en ambas tablas. [A] (R7)
 - Contrato de identidad id_tipologia: FNV-1a-64(obra_norm + "|" +
@@ -208,13 +258,34 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   binario por fila {MATCHED, NO_MATCH}) + reporte de reconciliación.
   No-lossy. [A] (R8) Dependiente de E (EN DISPUTA): default no-lossy bajo
   incertidumbre del consumidor.
+- Gobernanza del filtro de vigencia: ESTATUS C.CLOUD exclusivamente;
+  ESTATUS no participa bajo ninguna circunstancia. Comparación del filtro
+  exclusivamente contra _norm. [B] (5.2)
+- Contrato de tipo de ESTATUS C.CLOUD en ingesta: cast forzado a Utf8 antes
+  de 5.1, preservando null; valor numérico, si existe, siempre literal "0".
+  [B] (R13)
+- Conjuntos de ruteo del filtro de vigencia: Finalizado (R9), Programado
+  (R10). [B]
+- Disposición residual no-lossy para ESTATUS_C_CLOUD_norm no reconocido:
+  cola de reconciliación/excepción, exclusión de ambas tablas append,
+  homologada a R8. Identidad exacta del artefacto destino diferida a
+  Bloque 3, igual que R8. [B] (R11)
+- Mapeo del campo estatus en la tabla 3: exclusivamente desde ESTATUS
+  C.CLOUD crudo, sin transformación. Reafirma sin excepciones que la tabla
+  3 consume columnas crudas en su totalidad; se evaluó y se rechazó
+  explícitamente una enmienda global al contrato 5.1 que habría migrado la
+  tabla 3 completa a consumir _norm. [B] (R12)
 
 ### PARCIALMENTE DEFINIDO
+- Canonicalización de `""` vs `null` en ESTATUS C.CLOUD. Ambos valores ya
+  están aceptados independientemente en el conjunto de ruteo de Programado
+  (R10); el comportamiento de ruteo no depende de esta distinción y por
+  tanto no bloqueó el cierre de #4. Abierto: si deben colapsarse a una sola
+  representación canónica en ingesta, o conservarse como estados crudos
+  distintos — relevante específicamente para el campo estatus de la tabla
+  3 (R12), que al consumir el valor crudo sí distingue entre ambos.
 
 ### PENDIENTE (crítico — bloquea generación de archivos)
-4. Columna de estatus que gobierna el filtro + destino de filas fuera de
-   {FINALIZADA, Nueva}. [B]
-   (anchor: declarar si el filtro opera sobre crudo o sobre _norm.)
 5. Semántica de USAR (valores y efecto). [B]
 6. Definición de "unidad" y nivel de agrupación del count. [C]
    (anchor: id_tipologia es identidad-de-tipología (R6); con R8, null en
@@ -245,3 +316,5 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 **S3 — 2026-06-17**: cierre de #2. Llave de join PR↔mapeo = (obra_norm, N1_norm..N5_norm) sobre _norm; id_tipologia = FNV-1a-64(obra_norm + "|" + tipologia_norm), UInt64, orden fijo; guard fail-fast R6.1 para tipología vacía en mapeo; mapeo = archivo por obra, obra_norm desde columna Obra cruda. Surgió grieta nueva #12. Próximo foco candidato: #12, luego barrer #4/#5.
 
 **S4 — 2026-06-17**: cierre provisional de #12. Disposición no-lossy del no-match referencial: fila se conserva, id_tipologia = null + tipologia_status = NO_MATCH (enum binario por fila) + reporte de reconciliación (R8). Consecuencias: id_tipologia pasa a UInt64 nullable en §4; #6 se agudiza (el grano debe preservar matched/NO_MATCH). Provisional, dependiente de E (contrato de consumo, EN DISPUTA). Próximo foco candidato: barrer #4/#5.
+
+**S5 — 2026-06-17**: cierre de #4. Decisiones: ESTATUS C.CLOUD gobierna el filtro de vigencia en exclusiva, ESTATUS sin autoridad alguna; comparación del filtro exclusivamente contra _norm; conjuntos de ruteo declarados para Finalizado (R9) y Programado (R10); disposición residual no-lossy para estatus no reconocidos, homologada a R8 (R11); contrato de tipo en ingesta para ESTATUS C.CLOUD — cast forzado a Utf8 antes de 5.1, null preservado, valor numérico siempre literal "0" (R13); campo estatus de la tabla 3 mapea exclusivamente desde ESTATUS C.CLOUD crudo (R12). Nota de proceso: se evaluó y se rechazó explícitamente una enmienda global al contrato 5.1 que habría migrado la tabla 3 completa a consumir _norm — la tabla 3 conserva su contrato original de columnas crudas, sin excepciones, porque es la única tabla cuya función es ser leída por un humano. Abierto, no bloqueante: canonicalización `""` vs `null` en ESTATUS C.CLOUD; identidad exacta del artefacto de reconciliación de R11, diferida a Bloque 3 junto con R8. Próximo foco candidato: #5 (semántica de USAR) o #6/#7/#8, a decisión de Alberto.
