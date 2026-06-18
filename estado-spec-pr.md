@@ -2,10 +2,10 @@
 
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
 
-**Versión:** S6 → S7, fecha 2026-06-18.
-**Sesión de origen:** Bloque 2 (Domain) — cierre de #8 (universalidad y gate destructivo de la precondición estructural de ingesta de archivos PR: formato .xlsx, layout fijo de filas/columnas, validación literal de encabezado).
+**Versión:** S7 → S8, fecha 2026-06-18.
+**Sesión de origen:** Bloque 2 (Domain) — cierre de #7 (semántica del campo FECHA por estatus: invariancia, mapeo por tabla de salida, nomenclatura `fecha`, validación activa ante nulo o malformado).
 **Módulo en foco:** PR — scope-lock activo (un solo módulo hasta PENDIENTE crítico vacío)
-**Estado global:** reglas de negocio definidas: 18 (R1–R18) + R3.1, R6.1 bordes
+**Estado global:** reglas de negocio definidas: 22 (R1–R22) + R3.1, R6.1 bordes
 **Test de verificabilidad (Definition of Done):** una regla está DEFINIDA si y solo si se expresa como
 `DADO [precondición] CUANDO [evento] ENTONCES el sistema DEBE [resultado observable]`, sin huecos.
 Si no, va a PENDIENTE. No se juzga ambigüedad por intuición; se aplica este test.
@@ -44,13 +44,14 @@ Semántica de niveles declarada: N1 frente de trabajo · N2 edificio/torre · N3
 
 **Tabla Mapeo de Tipologías (DEFINIDA):** tabla de dimensión curada, un archivo por obra, mantenida por analista. Esquema crudo: `[N1, N2, N3, N4, N5, Tipologia, Obra]`. Llave de join contra PR: `(obra_norm, N1_norm..N5_norm)`, ejecutada sobre columnas `_norm` en ambas tablas (R7). El sistema deriva en pipeline `obra_norm, N1_norm..N5_norm, tipologia_norm, id_tipologia`; ninguna `_norm` vive en el archivo. `obra_norm` proviene de la columna Obra cruda vía R5 (no del nombre de archivo). Vacío en Tipologia → rechazo de ingesta (R6.1).
 
+
 ## 4. SALIDA OBJETIVO (DECLARADA, parcialmente indefinida)
 
-1. **Append PR Finalizado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R9 (criterio completo: 5.2/R9; ya no se reduce a la literal única "FINALIZADA"). Esquema declarado: `[id_actividad, id_tipologia, count unidades] → [obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64 (nullable; null = NO_MATCH), count_unidades:UInt32]`.
-2. **Append PR Programado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R10 (criterio completo: 5.2/R10). Esquema declarado: `[obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64 (nullable; null = NO_MATCH), fecha_inicio:Date, count_unidades:UInt32]`.
-3. **Reporte desnormalizado (humano)** — unión de ambos estados, desnormalizada. Esquema declarado: `[estatus, nombre_actividad, nivel_1..5, fecha_inicio, macropartida, obra:Utf8]`. La columna usar se excluye del esquema de salida: toda fila sobreviviente al gate de R14 tiene USAR=="SI" por construcción, por lo que la columna sería constante y no informativa (R15). 
-El campo `estatus` se puebla exclusivamente desde `ESTATUS C.CLOUD` crudo, sin transformación (R12). Ningún otro campo de esta tabla cambia de fuente: la tabla 3 conserva, sin excepciones, el contrato original de consumir columnas crudas en su totalidad (decisión explícita de la sesión S5 — ver bitácora).
-> Términos indefinidos dentro de esta sección: `count unidades`, semántica de `fecha_inicio` por estatus. Ver auditoría.
+1. **Append PR Finalizado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R9 (criterio completo: 5.2/R9; ya no se reduce a la literal única "FINALIZADA"). Esquema declarado: `[id_actividad, id_tipologia, count unidades] → [obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64 (nullable; null = NO_MATCH), count_unidades:UInt32]`. Excluye el campo fecha por decisión de esquema, no por vaciamiento semántico (R21).
+2. **Append PR Programado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R10 (criterio completo: 5.2/R10). Esquema declarado: `[obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64 (nullable; null = NO_MATCH), fecha:Date, count_unidades:UInt32]`. Semántica de `fecha` fijada por R19; validación ante nulo/malformado por R22. Mecanismo de derivación de `fecha` bajo el grano de R4 — PENDIENTE, ver #6 (Sección 8).
+3. **Reporte desnormalizado (humano)** — unión de ambos estados, desnormalizada. Esquema declarado: `[estatus, nombre_actividad, nivel_1..5, fecha, macropartida, obra:Utf8]`. La columna usar se excluye del esquema de salida: toda fila sobreviviente al gate de R14 tiene USAR=="SI" por construcción, por lo que la columna sería constante y no informativa (R15). 
+El campo `estatus` se puebla exclusivamente desde `ESTATUS C.CLOUD` crudo, sin transformación (R12). El campo `fecha` se puebla exclusivamente desde el valor crudo de FECHA de esa fila, sin transformación ni agregación, al grano de fila original (R20). Ningún otro campo de esta tabla cambia de fuente: la tabla 3 conserva, sin excepciones, el contrato original de consumir columnas crudas en su totalidad (decisión explícita de la sesión S5 — ver bitácora).
+> Términos indefinidos dentro de esta sección: `count unidades` (ver #6, Sección 8). La semántica de `fecha` por estatus quedó resuelta en #7 (R19–R22); el mecanismo de derivación de `fecha` en Tabla 2 permanece pendiente, ligado a la corrección del grano de R4 en #6.
 
 ## 5. REGLAS DE NEGOCIO — DOMAIN (Bloque 2)
 
@@ -265,6 +266,48 @@ R18 [cierra #8, gate de validación literal de encabezado] DADO un
    corrección upstream. No se aplica normalización (5.1) al texto del
    encabezado antes de esta comparación.
 
+### 5.4 Contrato de Semántica y Validación de FECHA — Campo `fecha`  [cierra #7]
+
+Gobernanza: FECHA es un campo de tipo fecha, no de texto; no participa del pipeline de
+normalización 5.1 y no genera contraparte _norm. Su semántica es invariante respecto a
+ESTATUS_C_CLOUD y a cualquier ruteo de salida.
+
+R19 [cierra #7, semántica] DADO una fila de PR sobreviviente al gate de R14 (USAR=="SI")
+   CUANDO se interpreta el valor crudo de la columna FECHA
+   ENTONCES el sistema DEBE tratarlo como la fecha real de inicio de la actividad en una
+   ubicación física específica (resoluble vía N1..N5 / id_tipologia), de forma invariante
+   respecto a ESTATUS_C_CLOUD o a cualquier ruteo de salida. Este es un hecho de origen sobre
+   el dato crudo; cómo el grano de agregación (R4) lo consume es materia de #6, no de esta
+   regla.
+
+R20 [cierra #7, passthrough Tabla 3] DADO que la Tabla 3 consume columnas crudas en su
+   totalidad (5.1, R12)
+   CUANDO se puebla su esquema
+   ENTONCES el sistema DEBE poblar el campo fecha exclusivamente con el valor crudo de FECHA
+   de esa fila, sin transformación ni agregación, al grano de fila original — no al grano de
+   R4.
+
+R21 [cierra #7, exclusión Tabla 1] DADO que Append PR Finalizado representa actividades para
+   las que el consumidor no necesita una fecha de inicio (decisión de negocio confirmada)
+   CUANDO se define su esquema
+   ENTONCES el sistema DEBE excluir el campo fecha. Exclusión de esquema, no de semántica —
+   FECHA sigue siendo válida en el dato subyacente. Verificado contra el riesgo cruzado de
+   "ritmos históricos" (mandato de módulo PR): ese cálculo se resuelve fuera de esta tabla, sin
+   conflicto.
+
+R22 [cierra #7, validación activa, no-lossy, homologada a R2] DADO una fila sobreviviente a
+   R14 cuyo FECHA es nulo, blanco, o no castea limpiamente a tipo fecha
+   CUANDO se ingesta y valida la fila
+   ENTONCES el sistema DEBE enrutarla a la cola de anomalías, no generar valor de fecha para
+   ella, y continuar procesando el resto del archivo sin abortar la corrida. Defensiva:
+   inspección empírica (Alberto, S8) confirmó que bajo USAR=="SI" esto no ocurre hoy — sin
+   nulos, sin blancos, sin artefactos de época Excel, sin centinelas de futuro lejano, formato
+   DIA-MES-AÑO consistente. Esta regla cubre una violación futura del supuesto, no un problema
+   observado.
+
+Nomenclatura de salida: el campo se llama `fecha` (no `fecha_inicio`), confirmado por Alberto
+en S8.
+
 
 ## 6. AUDITORÍA — GRIETAS ABIERTAS
 
@@ -274,7 +317,7 @@ R18 [cierra #8, gate de validación literal de encabezado] DADO un
 
 ~~**B. Filtrado y estatus.** Dos columnas de estatus (`ESTATUS`, `ESTATUS C.CLOUD`): cuál gobierna el filtro no está declarado. Resuelto: `ESTATUS C.CLOUD` gobierna en exclusiva (5.2, R9–R13). Filas fuera de {FINALIZADA, Nueva}: destino no declarado (riesgo de drop silencioso). Resuelto: cola de reconciliación no-lossy, homologada a R8 (R11). Semántica de `USAR` (valores y efecto). Resuelto: gate destructivo upstream de toda la tubería, comparación contra valor crudo sin _norm, sin auditoría — excepción explícita a la postura no-lossy (R14); exclusión de la columna usar en el esquema de Tabla 3 (R15).~~
  
-**C. Agregación.** "Unidad" no definida; nivel de agrupación del count no declarado. `FECHA` cambia de significado según estatus (Programado conserva fecha, Finalizado la descarta) sin regla declarada.
+**C. Agregación.** "Unidad" no definida; nivel de agrupación del count no declarado — ver #6. ~~`FECHA` cambia de significado según estatus (Programado conserva fecha, Finalizado la descarta) sin regla declarada.~~ Resuelto en #7: la hipótesis de que FECHA cambia de significado por estatus fue evaluada y descartada — su semántica es invariante (R19); Tabla 1 la excluye por decisión de esquema, no por vaciamiento semántico (R21); Tabla 3 la consume sin transformación (R20); validación activa ante nulo/malformado homologada a R2 (R22). Pendiente, ligado a #6: el mecanismo de derivación de fecha en Tabla 2 bajo el grano corregido de R4.
  
 **D. Frontera arquitectónica.** Tensión entre "migrar todo a GCP+Polars" y "consumir vía PQ/Sheets". Sin definir: dónde aterrizan los outputs (BigQuery / GCS / Sheet), qué extrae PQ (crudo vs final), qué significa técnicamente "compatible con Sheets", y el mecanismo que resuelve "versión vigente" fuera de M.
  
@@ -363,6 +406,14 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   de los ~30 encabezados esperados desde la columna T; cualquier
   discrepancia aborta la ejecución completa multiobra, sin salida
   parcial, hasta resolución upstream (R18). [F]
+- Semántica y contrato de validación del campo FECHA: invariante respecto a estatus o ruteo,
+  no participa de 5.1, fecha real de inicio en ubicación física específica (R19). Passthrough
+  exclusivo y sin transformación en Tabla 3, al grano de fila original (R20). Exclusión
+  deliberada de esquema en Tabla 1 — Finalizado no necesita la fecha para su consumidor;
+  verificado sin conflicto contra el mandato de "ritmos históricos" del módulo PR, que se
+  calcula fuera de esta tabla (R21). Validación activa no-lossy ante FECHA nulo, en blanco o
+  mal formado, homologada a R2 — enruta a cola de anomalías sin abortar la corrida (R22).
+  Nomenclatura de salida fijada: `fecha` (no `fecha_inicio`). [C]
 
 ### PARCIALMENTE DEFINIDO
 - Canonicalización de `""` vs `null` en ESTATUS C.CLOUD. Ambos valores ya
@@ -374,13 +425,8 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   3 (R12), que al consumir el valor crudo sí distingue entre ambos.
 
 ### PENDIENTE (crítico — bloquea generación de archivos)
-6. Definición de "unidad" y nivel de agrupación del count. [C]
-   (anchor: id_tipologia es identidad-de-tipología (R6); con R8, null en
-   id_tipologia es valor de output legítimo (NO_MATCH). El grano de R4
-   (obra_norm, id_actividad) DEBE modificarse para preservar la distinción
-   matched/NO_MATCH al agregar, o colapsa filas con tipología real contra
-   filas sin ella. Grano nuevo: pendiente en #6.)
-7. Semántica de FECHA/fecha_inicio por estatus. [C]
+6. Definición de "unidad" y nivel de agrupación del count; corrección del grano de R4. [C]
+   (anchor: id_tipologia es identidad-de-tipología (R6); con R8, null en id_tipologia es valor de output legítimo (NO_MATCH). El grano de R4 (obra_norm, id_actividad) DEBE modificarse para preservar la distinción matched/NO_MATCH al agregar, o colapsa filas con tipología real contra filas sin ella. Además, con el cierre de #7 (R19), FECHA queda definida a una ubicación física más fina que el grano actual — el campo fecha de Tabla 2 no tiene mecanismo de derivación posible bajo el grano vigente y depende de esta corrección. Propuesta recibida de Alberto en S8, sin auditar: grano de Tabla 1 = [obra_norm, id_actividad, id_tipologia, count_unidades]; grano de Tabla 2 = [obra_norm, id_actividad, id_tipologia, fecha, count_unidades]. Pendiente de evaluación contra DoD cuando #6 sea el foco.)
 10. Frontera GCP+Polars ↔ PQ/Sheets y ubicación de fuentes/outputs. [D] (Bloque 3)
 11. Mecanismo de resolución de "versión vigente". [D] (Bloque 3)
 
@@ -407,3 +453,5 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 **S6 — 2026-06-17**: cierre de #5. Decisiones: USAR es dominio cerrado y binario {SI, NO}, sin variantes observadas; gate destructivo posicionado upstream de toda la tubería (antes de 5.1, R1, R7, R9–R11) (R14); comparación contra el valor crudo, sin generar USAR_norm — excepción deliberada a la postura no-lossy del sistema (sin conteo, log ni cola de reconciliación), riesgo aceptado de pérdida silenciosa por casing/espacios; esquema de Tabla 3 actualizado para excluir la columna usar, al volverse constante tras el filtro (R15). Conexión señalada y no abierta: el gate de R14 precede a la agregación de R4, por lo que count_unidades en Tablas 1 y 2 solo contará filas con USAR=="SI" — relevante para #6 (grano), aún pendiente. Próximo foco candidato: #6 (semántica de "unidad" y grano del count), #7 (semántica de FECHA por estatus) o #8 (universalidad de la precondición estructural de parseo), a decisión de Alberto.
 
 **S7 — 2026-06-18**: cierre de #8. Decisiones: layout estructural universal sin excepciones para ninguna obra — filas 1–5 y columnas A–S (1–19) son ruido no validado, descartado incondicionalmente; fila 6 = encabezado absoluto, columna T = origen de datos (offset 0, alineado a USAR) (R17); formato de archivo restringido exclusivamente a .xlsx, violación aborta la ejecución completa (R16); validación literal completa de los ~30 encabezados esperados desde columna T, sensible a mayúsculas/espacios, sin normalización previa — cualquier discrepancia (encabezado extra, faltante, reordenado o con variación cosmética) aborta la ejecución completa multiobra, sin salida parcial, hasta corrección upstream (R18). Nota de proceso: R16–R18 introducen el modo de falla más destructivo del documento — más severo que R14 —, en tensión filosófica explícita con la postura no-lossy de R8/R11; se registra como split deliberado entre anomalías a nivel de fila (no-lossy) y anomalías estructurales a nivel de archivo (destructivo, abort global). Próximo foco candidato: #6 (semántica de "unidad" y grano del count) o #7 (semántica de FECHA por estatus), a decisión de Alberto.
+
+**S8 — 2026-06-18**: cierre de #7. Decisiones: semántica de FECHA fijada como invariante respecto a estatus y ruteo de salida — fecha real de inicio de actividad en ubicación física específica, fuera del pipeline 5.1 (R19); Tabla 3 la consume como passthrough crudo al grano de fila original (R20); Tabla 1 la excluye por decisión de esquema confirmada — verificado sin conflicto contra el mandato de "ritmos históricos" de PR, que se calcula fuera de esta tabla (R21); validación activa no-lossy ante FECHA nulo/en blanco/mal formado, homologada a R2, defensiva ante una violación de supuesto no observada hoy en inspección empírica (R22). Nomenclatura de salida fijada: `fecha`. Hipótesis original de auditoría (FECHA cambia de significado por estatus) evaluada y descartada. Grieta nueva registrada dentro de #6: la corrección del grano de R4 ahora también debe resolver el mecanismo de derivación de fecha en Tabla 2; Alberto propuso un grano candidato (obra_norm, id_actividad, id_tipologia [+ fecha en Tabla 2]), recibido sin auditar. Próximo foco candidato: #6 (semántica de "unidad" y corrección del grano de R4, incorporando la propuesta recibida) o #10/#11 (Bloque 3), a decisión de Alberto.
