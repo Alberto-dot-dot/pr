@@ -2,10 +2,10 @@
 
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
 
-**Versión:** S5 → S6, fecha 2026-06-17.
-**Sesión de origen:** Bloque 2 (Domain) — cierre de #5 (dominio y gating destructivo de USAR upstream de toda la tubería; exclusión de la columna usar en el esquema de Tabla 3).
+**Versión:** S6 → S7, fecha 2026-06-18.
+**Sesión de origen:** Bloque 2 (Domain) — cierre de #8 (universalidad y gate destructivo de la precondición estructural de ingesta de archivos PR: formato .xlsx, layout fijo de filas/columnas, validación literal de encabezado).
 **Módulo en foco:** PR — scope-lock activo (un solo módulo hasta PENDIENTE crítico vacío)
-**Estado global:** reglas de negocio definidas: 15 (R1–R15) + R3.1, R6.1 bordes
+**Estado global:** reglas de negocio definidas: 18 (R1–R18) + R3.1, R6.1 bordes
 **Test de verificabilidad (Definition of Done):** una regla está DEFINIDA si y solo si se expresa como
 `DADO [precondición] CUANDO [evento] ENTONCES el sistema DEBE [resultado observable]`, sin huecos.
 Si no, va a PENDIENTE. No se juzga ambigüedad por intuición; se aplica este test.
@@ -40,7 +40,7 @@ Semántica de niveles declarada: N1 frente de trabajo · N2 edificio/torre · N3
 
 **Columnas obligatorias / de trabajo (declaradas):** `USAR · ESTATUS · ACTIVIDAD · NIVELES (1–5) · FECHA`
 
-**Precondición estructural de parseo (declarada):** las primeras 5 filas y la primera columna del archivo están vacías. (Universalidad para todas las obras: no confirmada → PENDIENTE F.)
+**Precondición estructural de parseo (DEFINIDA, cierra #8):** todo archivo PR, sin excepción para ninguna obra, sigue este layout físico fijo: las filas 1 a 5 y las columnas A a S (columnas 1–19) son ruido estático no estructurable — nunca se validan, se descartan incondicionalmente en la ingesta. La fila 6 es la fila de encabezado absoluta; la columna T es el origen de datos absoluto (offset 0), alineado con la primera entrada del esquema crudo (USAR). El formato de archivo se restringe exclusivamente a binario .xlsx. Reglas que gobiernan: R16–R18.
 
 **Tabla Mapeo de Tipologías (DEFINIDA):** tabla de dimensión curada, un archivo por obra, mantenida por analista. Esquema crudo: `[N1, N2, N3, N4, N5, Tipologia, Obra]`. Llave de join contra PR: `(obra_norm, N1_norm..N5_norm)`, ejecutada sobre columnas `_norm` en ambas tablas (R7). El sistema deriva en pipeline `obra_norm, N1_norm..N5_norm, tipologia_norm, id_tipologia`; ninguna `_norm` vive en el archivo. `obra_norm` proviene de la columna Obra cruda vía R5 (no del nombre de archivo). Vacío en Tipologia → rechazo de ingesta (R6.1).
 
@@ -226,6 +226,46 @@ R12 [cierra #4, mapeo de salida — tabla humana] DADO que la tabla 3 consume
    ESTATUS C.CLOUD, sin transformación alguna, y nunca con ESTATUS ni con su
    forma _norm.
 
+### 5.3 Contrato de Ingesta Estructural — Layout de Archivo PR [cierra #8]
+
+Gobernanza: estos chequeos se ejecutan antes de 5.1, R1, R7, R9–R11 y R14.
+Los tres son globales: un solo archivo que falla bloquea la salida de
+todas las obras de la corrida, no solo la de la obra que falló. Decisión
+deliberada de máxima rigidez: se sacrifica disponibilidad a cambio de
+forzar la corrección upstream del defecto.
+
+R16 [cierra #8, gate de formato de archivo] DADO cualquier archivo
+   sometido a ingesta como parte de una corrida de PR
+   CUANDO ese archivo no es un .xlsx binario válido (extensión
+   incorrecta, corrupto, o ilegible)
+   ENTONCES el sistema DEBE abortar la corrida de ingesta completa para
+   todas las obras de inmediato, no producir salida para ninguna obra, y
+   reportar la falla. La corrida no se reanuda hasta que todos los
+   archivos del batch sean .xlsx válidos.
+
+R17 [cierra #8, ruido estructural] DADO un archivo PR que ha pasado R16
+   CUANDO el archivo se parsea
+   ENTONCES el sistema DEBE descartar incondicionalmente las filas 1 a 5
+   y las columnas A a S, sin inspeccionar ni validar su contenido, y
+   establecer la fila 6 como fila de encabezado y la columna T como
+   origen estructural (offset 0) del dominio de datos.
+
+R18 [cierra #8, gate de validación literal de encabezado] DADO un
+   archivo PR que ha pasado R16 y R17
+   CUANDO la fila 6, desde la columna T en adelante, se compara contra
+   el esquema crudo completo declarado en la Sección 3
+   ENTONCES el sistema DEBE ejecutar una comparación de string literal
+   exacta, sensible a mayúsculas y espacios, contra cada encabezado
+   esperado, en orden posicional fijo; ante cualquier discrepancia —
+   encabezado extra, faltante, reordenado o con variación cosmética
+   (mayúsculas, espacios al inicio/final) — para cualquier archivo de
+   cualquier obra, el sistema DEBE abortar la corrida de ingesta completa
+   para todas las obras, no producir salida, y registrar en el log la
+   obra, archivo y encabezado específico en discrepancia, para
+   corrección upstream. No se aplica normalización (5.1) al texto del
+   encabezado antes de esta comparación.
+
+
 ## 6. AUDITORÍA — GRIETAS ABIERTAS
 
 "AUDITORÍA es descriptiva; el LEDGER (§8) es autoritativo para estado" 
@@ -240,7 +280,7 @@ R12 [cierra #4, mapeo de salida — tabla humana] DADO que la tabla 3 consume
  
 **E. Contrato de consumo y grafo.** El "MRP Excel" consumidor no está identificado contra el grafo del sistema (¿PLANTIR? ¿módulo sin nombre? ¿legado externo?). Riesgo: el consumidor actual espera 13 columnas a nivel de fila; el nuevo output entrega tablas agregadas (count). Si necesita detalle por ubicación, la agregación rompe el contrato.
  
-~~**F. Precondiciones estructurales.** El artefacto "5 filas + 1 columna vacías" debe entrar al contrato de ingesta con su caso borde: ¿garantizado para todas las obras o hay desviaciones que rompen el lector? Reglas de normalización propias de PR no declaradas (¿reutilizan las de MIDAS o son propias?).~~
+~~**F. Precondiciones estructurales.** El artefacto "5 filas + 1 columna vacías" debe entrar al contrato de ingesta con su caso borde: ¿garantizado para todas las obras o hay desviaciones que rompen el lector? Reglas de normalización propias de PR no declaradas (¿reutilizan las de MIDAS o son propias?). Resuelto: layout universal sin excepciones para ninguna obra; filas 1–5 y columnas A–S ruido no validado, descarte incondicional; fila 6 = encabezado, columna T = origen; formato exclusivo .xlsx; validación literal completa de encabezados con abort global de pipeline ante cualquier discrepancia (R16–R18). Nota: la segunda parte de esta grieta (reglas de normalización propias de PR) ya estaba resuelta desde S2 — pipeline 5.1 es propio de PR, no reutiliza MIDAS — y nunca se tachó; queda corregido aquí.~~
 
  
 ## 7. PLAN DE DESARROLLO POR BLOQUE
@@ -315,6 +355,14 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   usar (constante y no informativa tras el gate de R14). Esquema vigente:
   [estatus, nombre_actividad, nivel_1..5, fecha_inicio, macropartida,
   obra:Utf8]. [B] (R15)
+- Gate de ingesta estructural para archivos PR: layout universal sin
+  excepciones para ninguna obra. Formato de archivo restringido a .xlsx
+  (R16). Filas 1–5 y columnas A–S descartadas incondicionalmente como
+  ruido no validado; fila 6 = encabezado, columna T = origen de datos
+  (R17). Validación literal completa, sensible a mayúsculas y espacios,
+  de los ~30 encabezados esperados desde la columna T; cualquier
+  discrepancia aborta la ejecución completa multiobra, sin salida
+  parcial, hasta resolución upstream (R18). [F]
 
 ### PARCIALMENTE DEFINIDO
 - Canonicalización de `""` vs `null` en ESTATUS C.CLOUD. Ambos valores ya
@@ -333,8 +381,6 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
    matched/NO_MATCH al agregar, o colapsa filas con tipología real contra
    filas sin ella. Grano nuevo: pendiente en #6.)
 7. Semántica de FECHA/fecha_inicio por estatus. [C]
-8. Universalidad de la precondición estructural de parseo (5 filas + 1
-   columna vacías). [F]
 10. Frontera GCP+Polars ↔ PQ/Sheets y ubicación de fuentes/outputs. [D] (Bloque 3)
 11. Mecanismo de resolución de "versión vigente". [D] (Bloque 3)
 
@@ -359,3 +405,5 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 **S5 — 2026-06-17**: cierre de #4. Decisiones: ESTATUS C.CLOUD gobierna el filtro de vigencia en exclusiva, ESTATUS sin autoridad alguna; comparación del filtro exclusivamente contra _norm; conjuntos de ruteo declarados para Finalizado (R9) y Programado (R10); disposición residual no-lossy para estatus no reconocidos, homologada a R8 (R11); contrato de tipo en ingesta para ESTATUS C.CLOUD — cast forzado a Utf8 antes de 5.1, null preservado, valor numérico siempre literal "0" (R13); campo estatus de la tabla 3 mapea exclusivamente desde ESTATUS C.CLOUD crudo (R12). Nota de proceso: se evaluó y se rechazó explícitamente una enmienda global al contrato 5.1 que habría migrado la tabla 3 completa a consumir _norm — la tabla 3 conserva su contrato original de columnas crudas, sin excepciones, porque es la única tabla cuya función es ser leída por un humano. Abierto, no bloqueante: canonicalización `""` vs `null` en ESTATUS C.CLOUD; identidad exacta del artefacto de reconciliación de R11, diferida a Bloque 3 junto con R8. Próximo foco candidato: #5 (semántica de USAR) o #6/#7/#8, a decisión de Alberto.
 
 **S6 — 2026-06-17**: cierre de #5. Decisiones: USAR es dominio cerrado y binario {SI, NO}, sin variantes observadas; gate destructivo posicionado upstream de toda la tubería (antes de 5.1, R1, R7, R9–R11) (R14); comparación contra el valor crudo, sin generar USAR_norm — excepción deliberada a la postura no-lossy del sistema (sin conteo, log ni cola de reconciliación), riesgo aceptado de pérdida silenciosa por casing/espacios; esquema de Tabla 3 actualizado para excluir la columna usar, al volverse constante tras el filtro (R15). Conexión señalada y no abierta: el gate de R14 precede a la agregación de R4, por lo que count_unidades en Tablas 1 y 2 solo contará filas con USAR=="SI" — relevante para #6 (grano), aún pendiente. Próximo foco candidato: #6 (semántica de "unidad" y grano del count), #7 (semántica de FECHA por estatus) o #8 (universalidad de la precondición estructural de parseo), a decisión de Alberto.
+
+**S7 — 2026-06-18**: cierre de #8. Decisiones: layout estructural universal sin excepciones para ninguna obra — filas 1–5 y columnas A–S (1–19) son ruido no validado, descartado incondicionalmente; fila 6 = encabezado absoluto, columna T = origen de datos (offset 0, alineado a USAR) (R17); formato de archivo restringido exclusivamente a .xlsx, violación aborta la ejecución completa (R16); validación literal completa de los ~30 encabezados esperados desde columna T, sensible a mayúsculas/espacios, sin normalización previa — cualquier discrepancia (encabezado extra, faltante, reordenado o con variación cosmética) aborta la ejecución completa multiobra, sin salida parcial, hasta corrección upstream (R18). Nota de proceso: R16–R18 introducen el modo de falla más destructivo del documento — más severo que R14 —, en tensión filosófica explícita con la postura no-lossy de R8/R11; se registra como split deliberado entre anomalías a nivel de fila (no-lossy) y anomalías estructurales a nivel de archivo (destructivo, abort global). Próximo foco candidato: #6 (semántica de "unidad" y grano del count) o #7 (semántica de FECHA por estatus), a decisión de Alberto.
