@@ -2,10 +2,10 @@
 
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
 
-**Versión:** S9 → S10, fecha 2026-06-18.
-**Sesión de origen:** Bloque 0/3 (Contrato de consumo y posición en grafo) — cierre de los 3 ítems EN DISPUTA; declaración de CÓMPUTO como módulo nombrado en el grafo de PLAN; enmienda de esquema Tabla 3 (R15 enmendada).
+**Versión:** S10 → S11, fecha 2026-06-19.
+**Sesión de origen:** Bloque 3 (Arquitectura + Stack) — cierre de #11 (resolución de versión vigente, R23–R26); avance parcial de #10 (frontera de salida: BigQuery + split Polars/BigQuery vía Opción C); apertura de #13 (vigencia de Tabla Mapeo) y #14 (entorno de ejecución de Polars en PR).
 **Módulo en foco:** PR — scope-lock activo (un solo módulo hasta PENDIENTE crítico vacío)
-**Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada S9/S10), R9–R10, R11 (enmendada S10), R12–R22, R6.1 borde. R4 retirada en S9. R15 enmendada en S10: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]. EN DISPUTA vacío desde S10.
+**Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada S9/S10), R9–R10, R11 (enmendada S10), R12–R22, R23–R26 (S11, cierre #11), R6.1 borde. R4 retirada en S9. R15 enmendada en S10: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]. EN DISPUTA vacío desde S10.
 **Test de verificabilidad (Definition of Done):** una regla está DEFINIDA si y solo si se expresa como
 `DADO [precondición] CUANDO [evento] ENTONCES el sistema DEBE [resultado observable]`, sin huecos.
 Si no, va a PENDIENTE. No se juzga ambigüedad por intuición; se aplica este test.
@@ -27,7 +27,7 @@ Consolidar todos los Programas Rítmicos (PR) vigentes de cada obra y dejarlos p
 
 ## 3. ENTRADA CONOCIDA (DEFINIDO como hecho declarado)
 
-**Hoja de programas vigentes:** [ruta_archivo:Utf8, nombre_programa:Utf8], fuente del acrónimo de obra y de la resolución de "vigente" (toca #11). 
+**Hoja de programas vigentes:** [ruta_archivo:Utf8, nombre_programa:Utf8]. Cardinalidad: una fila por (obra, macro_partida) — macro_partida está embebida en nombre_programa, no es columna separada. ruta_archivo es una ruta de carpeta estable, sin año, declarada por el analista; no apunta directamente al archivo físico. nombre_programa es el nombre de archivo objetivo exacto. Mecanismo de resolución de "vigente" definido en 5.6 (R23–R26, cierra #11). Fuente del acrónimo de obra: ver R3.
 
 **Programa Rítmico (PR):** programa de ejecución de obra, estandarizado en Excel. Cada PR corresponde a una macro partida.
 Macro partidas declaradas (≈4; variabilidad del conjunto no confirmada → ver PENDIENTE):
@@ -362,6 +362,103 @@ ENTONCES el sistema DEBE agrupar por (obra_norm, id_actividad, id_tipologia, fec
 Nomenclatura de salida: el campo se llama `fecha` (no `fecha_inicio`), confirmado por Alberto
 en S8.
 
+### 5.6 Contrato de Resolución de Versión Vigente — Archivo PR [cierra #11]
+
+Gobernanza: este contrato resuelve, para cada fila declarada en la hoja de
+programas vigentes (§3), cuál archivo físico es el vigente, antes de que
+ese archivo entre a R16–R18 (gate estructural) o a cualquier otro
+procesamiento.
+
+R23 [cierra #11, mecanismo primario] DADO una fila (ruta_archivo,
+   nombre_programa) declarada en la hoja de programas vigentes
+   CUANDO el sistema resuelve el archivo vigente
+   ENTONCES DEBE recorrer recursivamente el árbol bajo ruta_archivo,
+   identificar las carpetas cuyo nombre coincide con el patrón
+   <PREFIJO>_SEM_<AAAAMMDD>, extraer la fecha codificada de cada una, y
+   dentro de esas carpetas buscar archivos cuyo nombre coincide de forma
+   exacta (sensible a mayúsculas y espacios, homologado a R18) con
+   nombre_programa. DEBE seleccionar como vigente el archivo bajo la
+   carpeta de fecha máxima.
+
+R24 [cierra #11, borde: carpetas no conformes] DADO una carpeta
+   encontrada durante el recorrido cuyo nombre no coincide con el patrón
+   <PREFIJO>_SEM_<AAAAMMDD>
+   CUANDO el sistema recorre el árbol
+   ENTONCES DEBE ignorarla como candidata de fecha (no extraer fecha de
+   ella) y continuar el recorrido sin abortar.
+
+R25 [cierra #11, borde: cero coincidencias] DADO que el recorrido para
+   una fila declarada no produce ningún archivo coincidente en ningún
+   punto del árbol
+   CUANDO se ejecuta la resolución
+   ENTONCES el sistema DEBE abortar la corrida completa multiobra, no
+   producir salida para ninguna obra, y registrar en el log la fila
+   específica en falla. Homologado a R16/R18: precisión de origen es un
+   hard constraint, no una anomalía de fila.
+
+R26 [cierra #11, borde: empate] DADO que el recorrido produce más de un
+   archivo coincidente bajo la fecha máxima
+   CUANDO se ejecuta la resolución
+   ENTONCES el sistema DEBE abortar la corrida completa multiobra (misma
+   postura que R25) y registrar la fila ambigua, SIN recurrir al
+   timestamp de modificación del sistema de archivos (mtime) como
+   criterio de desempate — riesgo de mtime explícitamente rechazado por
+   inconsistencia bajo sincronización de Google Drive.
+
+### 5.7 Contrato de Frontera de Salida — Staging Polars / BigQuery [avance parcial de #10]
+
+Estado: PARCIALMENTE DEFINIDO. Resuelta la frontera de salida y el split
+de motor (Opción C). Pendientes dentro de #10: mecanismo de conexión
+Sheets (c), confirmación de interfaz de CÓMPUTO (d), ubicación de fuentes
+de entrada (Drive vs GCS), y entorno de ejecución de Polars (#14, bloquea
+la decisión de entrada). No es regla DADO/CUANDO/ENTONCES todavía: es
+decisión de arquitectura registrada, no contrato testeable cerrado.
+
+Decisiones tomadas (S11):
+
+D-10.1 [landing de salida] Las tres tablas de salida (T1, T2, T3) aterrizan
+   en BigQuery. PQ (transitorio, Modelo 2) y la futura capa Sheets/Workspace
+   se conectan a BigQuery. PQ no es parte de la arquitectura final: es
+   andamiaje para mantener vivo el MRP actual (CÓMPUTO) hasta la migración
+   final, momento en el cual se decomisiona. El driver de esta elección es
+   la latencia (§2): pull desde BigQuery vía conector, no recálculo local.
+
+D-10.2 [qué extrae PQ] PQ extrae las tablas de salida ya procesadas (las
+   vistas de BigQuery), no los archivos PR crudos. La lógica de limpieza/
+   normalización/join/agregación ya no vive en M; vive en el pipeline
+   GCP+Polars+BigQuery.
+
+D-10.3 [split de motor — Opción C] Polars posee todas las reglas a nivel de
+   fila hasta R8 inclusive: normalización (5.1), gate USAR (R14), hash de
+   identidad (R1, R6), join de tipología (R7), disposición no-lossy (R8).
+   Polars stagea a BigQuery una tabla a nivel de fila ya matcheada
+   (stg_matched: solo filas MATCHED, USAR-gated, normalizada) y, por
+   separado, el artefacto de reconciliación de R8 (recon_nomatch).
+   BigQuery posee la agregación (R4-T1, R4-T2), el ruteo de vigencia
+   (R9/R10) y las vistas de servicio de las tres tablas:
+   - T1: vista de agregación, grano R4-T1, filtro R9.
+   - T2: vista de agregación, grano R4-T2, filtro R10.
+   - T3: vista a grano de fila, passthrough crudo (R15, R20), filtro
+     R9∪R10.
+   Justificación del corte: las reglas de "muerte de fila" no-lossy
+   (R8/R11/R14/R22) permanecen consolidadas en Polars — el corte cae entre
+   R6 y R7 a nivel conceptual, manteniendo la trazabilidad de "dónde muere
+   una fila" en un solo motor. Solo migran a SQL las reglas de conteo
+   (R4) y de ruteo (R9/R10), que no son reglas de muerte de fila. Se
+   evaluó y descartó la Opción A (join R7 + disposición R8 en BigQuery)
+   por dispersar la filosofía no-lossy entre dos motores; se evaluó la
+   Opción B (todo en Polars, BigQuery solo almacena) y se prefirió C por
+   legibilidad del contrato de servicio como vistas SQL versionadas, sin
+   sacrificar la consolidación de reglas de fila.
+
+Implicancia de motor para artefactos diferidos: bajo Opción C, recon_nomatch
+(R8) es producido por Polars. El artefacto residual de R11 (estatus no
+reconocido) queda implícitamente del lado del ruteo R9/R10 — que vive en
+BigQuery — y por tanto su motor NO está resuelto por esta decisión. Su
+esquema y destino siguen diferidos a Bloque 3 (consistente con R8/R11
+originales); la asignación de motor del artefacto R11 queda explícitamente
+abierta, no cerrada por defecto.
+
 
 ## 6. AUDITORÍA — GRIETAS ABIERTAS
 
@@ -373,7 +470,9 @@ en S8.
  
 **C. Agregación.** ~~"Unidad" no definida; nivel de agrupación del count no declarado — ver #6.~~ Resuelto en #6 (S9): "unidad" definida y grano fijado (R4-T1, R4-T2, §5.5). ~~`FECHA` cambia de significado según estatus (Programado conserva fecha, Finalizado la descarta) sin regla declarada.~~ Resuelto en #7: la hipótesis de que FECHA cambia de significado por estatus fue evaluada y descartada — su semántica es invariante (R19); Tabla 1 la excluye por decisión de esquema, no por vaciamiento semántico (R21); Tabla 3 la consume sin transformación (R20); validación activa ante nulo/malformado homologada a R2 (R22). ~~Pendiente, ligado a #6: el mecanismo de derivación de fecha en Tabla 2 bajo el grano corregido de R4.~~ Resuelto en #6 (S9): R4-T2 fija el grano de Tabla 2 con fecha.
  
-**D. Frontera arquitectónica.** Tensión entre "migrar todo a GCP+Polars" y "consumir vía PQ/Sheets". Sin definir: dónde aterrizan los outputs (BigQuery / GCS / Sheet), qué extrae PQ (crudo vs final), qué significa técnicamente "compatible con Sheets", y el mecanismo que resuelve "versión vigente" fuera de M.
+**D. Frontera arquitectónica.** Tensión entre "migrar todo a GCP+Polars" y "consumir vía PQ/Sheets". Avance parcial S11 (5.7): outputs aterrizan en BigQuery (D-10.1); PQ extrae tablas procesadas, no crudos, y es transitorio (D-10.2); split Polars/BigQuery vía Opción C (D-10.3). ~~el mecanismo que resuelve "versión vigente" fuera de M~~ — resuelto para archivos PR en #11 (R23–R26, S11). Sin definir aún dentro de #10: (c) mecanismo técnico de conexión Sheets (Connected Sheets vs conector vs export); (d) interfaz concreta de CÓMPUTO contra el landing point; ubicación de fuentes de entrada (Drive vs GCS); y entorno de ejecución de Polars (#14), que bloquea la decisión de entrada.**D. Frontera arquitectónica.** Tensión entre "migrar todo a GCP+Polars" y "consumir vía PQ/Sheets". Sin definir: dónde aterrizan los outputs (BigQuery / GCS / Sheet), qué extrae PQ (crudo vs final), qué significa técnicamente "compatible con Sheets". ~~y el mecanismo que resuelve "versión vigente" fuera de M~~ — resuelto para archivos PR en #11 (R23–R26, S11); el mecanismo vive dentro del recorrido del árbol de carpetas, no depende de PQ/M.
+
+**G. Resolución de vigencia — Tabla Mapeo de Tipologías.** El mecanismo de R23–R26 resuelve vigencia exclusivamente para archivos PR (hoja de programas vigentes, §3). La Tabla Mapeo de Tipologías se declara en §3 como "un archivo por obra", sin estructura de carpeta ni mecanismo de versionado definidos. Pendiente: ¿existe versionado real (carpetas por fecha, análogas a R23) o es un archivo verdaderamente único y estático por obra, sin ambigüedad de "vigente"? Si hay versionado, ubicación de carpeta y patrón de nombre no declarados. [G] #13.
  
 ~~**E. Contrato de consumo y grafo.** El "MRP Excel" consumidor no está identificado contra el grafo del sistema (¿PLANTIR? ¿módulo sin nombre? ¿legado externo?). Riesgo: el consumidor actual espera 13 columnas a nivel de fila; el nuevo output entrega tablas agregadas (count). Si necesita detalle por ubicación, la agregación rompe el contrato.~~
 > Cerrado S10: consumidor = CÓMPUTO (módulo declarado). T1 y T2 entregan counts agregados; CÓMPUTO solo necesita (obra, id_tipologia, id_actividad, count_unidades [+ fecha en T2]) — contrato no roto. T3 entrega reporte humano directo con esquema enmendado.
@@ -388,7 +487,7 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 - **Bloque 0 — Contrato de consumo y posición en grafo** ← **CERRADO (S10)**. Resolvió E.
 - **Bloque 1 — Objetivo + Requerimientos** (archivo) ← **DESBLOQUEADO (S10)**, no iniciado. Objetivo casi listo; requerimientos dependían de B0, ya cerrado.
 - **Bloque 2 — Domain** (archivo) ← **CERRADO (S9)**. Resolvió A, B, C, F.
-- **Bloque 3 — Arquitectura + Stack** (archivo) ← **EN CURSO**. Resuelve D (#10, #11).
+- **Bloque 3 — Arquitectura + Stack** (archivo) ← **EN CURSO**. #11 cerrado (S11, R23–R26). #10 avanzado parcialmente (S11, 5.7: D-10.1/D-10.2/D-10.3); restan (c) Sheets, (d) interfaz CÓMPUTO, fuente de entrada Drive/GCS, y #14 (entorno de ejecución). Resuelve D (#10, restante), G (#13) y #14.
 - **Bloque 4 — Roadmap por fases** (archivo). Depende de B2 + B3. Checkpoints críticos candidatos: integridad de llaves con join sin pérdida; resolución determinista de versión vigente.
 - **Bloque 5 — Development Fase 1** (archivo). Depende de B4.
 - **Bloque 6 — CLAUDE.md** (condicional). Solo si arquitectura sin Colab y contrato de PR exigen cambios de gobernanza.
@@ -526,6 +625,31 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
    Solo filas MATCHED: NO_MATCH excluidas de la Tabla 3 (R8 enmendada S10); tipologia no nulo por construcción. 
    Fuentes declaradas por campo en §4 y R15. [B]
 
+- Mecanismo de resolución de "versión vigente" para archivos PR (cierra
+  #11): para cada fila (ruta_archivo, nombre_programa) declarada en la
+  hoja de programas vigentes, el sistema recorre recursivamente el árbol
+  bajo ruta_archivo, identifica carpetas con patrón
+  <PREFIJO>_SEM_<AAAAMMDD>, extrae la fecha codificada (nunca mtime),
+  busca coincidencia exacta de nombre_programa (sensible a
+  mayúsculas/espacios, homologado a R18) dentro de ellas, y selecciona
+  el archivo de fecha máxima. Carpetas no conformes al patrón se ignoran
+  sin abortar (R24). Cero coincidencias o empate en la fecha máxima
+  abortan la corrida completa multiobra, homologado a R16/R18 (R25,
+  R26); mtime explícitamente rechazado como criterio de desempate por
+  riesgo de inconsistencia bajo sincronización de Drive. Cardinalidad de
+  la hoja de programas vigentes: una fila por (obra, macro_partida),
+  macro_partida embebida en nombre_programa. [D] (5.6, R23–R26)
+
+- Frontera de salida PR (avance parcial #10, S11): las 3 tablas aterrizan
+  en BigQuery; PQ y la futura capa Sheets/Workspace se conectan ahí; PQ es
+  transitorio (Modelo 2), se decomisiona en la migración final; PQ extrae
+  tablas procesadas (vistas), no crudos. Split de motor (Opción C): Polars
+  posee reglas a nivel de fila hasta R8 (normaliza, gatea USAR, hashea,
+  joinea, dispone no-match) y stagea stg_matched + recon_nomatch; BigQuery
+  posee agregación (R4-T1/T2), ruteo de vigencia (R9/R10) y las vistas de
+  servicio T1/T2/T3. Reglas de muerte de fila no-lossy (R8/R11/R14/R22)
+  permanecen en Polars. [D] (5.7, D-10.1/D-10.2/D-10.3)
+
 
 ### PARCIALMENTE DEFINIDO
 - Canonicalización de `""` vs `null` en ESTATUS C.CLOUD. Ambos valores ya
@@ -536,10 +660,19 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   distintos — relevante específicamente para el campo estatus de la tabla
   3 (R12), que al consumir el valor crudo sí distingue entre ambos.
 
+- Frontera GCP+Polars ↔ PQ/Sheets (#10): salida resuelta (BigQuery +
+  Opción C, 5.7). Abierto: (c) mecanismo de conexión Sheets; (d) interfaz
+  concreta de CÓMPUTO contra BigQuery; ubicación de fuentes de entrada
+  (Drive vs GCS); motor del artefacto residual de R11. Bloqueado en parte
+  por #14 (entorno de ejecución de Polars). [D] (Bloque 3)
+
 ### PENDIENTE (crítico — bloquea generación de archivos)
 ~~6. [CERRADO EN S9 — ver Sección 5.5, R4-T1, R4-T2, R8 enmendada]~~
-10. Frontera GCP+Polars ↔ PQ/Sheets y ubicación de fuentes/outputs. [D] (Bloque 3)
-11. Mecanismo de resolución de "versión vigente". [D] (Bloque 3)
+10. Frontera GCP+Polars ↔ PQ/Sheets — AVANCE PARCIAL S11 (5.7). Salida resuelta (BigQuery, Opción C). Restan: (c) mecanismo Sheets, (d) interfaz CÓMPUTO, fuente de entrada Drive/GCS, motor del artefacto R11. [D] (Bloque 3)
+~~11. Mecanismo de resolución de "versión vigente" para archivos PR. [D] (Bloque 3)~~
+> Cerrado en S11. Ver Sección 5.6, R23–R26.
+13. Estructura de carpeta y mecanismo de resolución de "vigente" para la Tabla Mapeo de Tipologías — análogo a #11, sin estructura de carpeta declarada aún. [G] (Bloque 3)
+14. Entorno de ejecución del pipeline Polars de PR (Cloud Run / Function / GCE / Dataflow / otro) — no declarado. Bloquea la decisión de fuente de entrada (Drive vs GCS) y la mecánica de escritura a BigQuery. Surgido en S11 al descartar el supuesto erróneo de Colab (Colab pertenece a MIDAS, no a PR). [D] (Bloque 3)
 
 ### EN DISPUTA
 ~~- Posición de PR en el grafo de dependencias del sistema PLAN.~~
@@ -571,3 +704,5 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 
 **S10 — 2026-06-18**: cierre de los 3 ítems EN DISPUTA. Decisiones: PR alimenta CÓMPUTO (T1, T2) y al consumidor humano directo (T3); no alimenta PLANTIR. El "MRP Excel" consumidor es CÓMPUTO, módulo declarado formalmente en el grafo de PLAN con inputs PR+MOLD y output de material ejecutado/programado; reemplaza al "módulo sin nombre" del grafo original. Compatibilidad del esquema agregado de T1/T2 con CÓMPUTO confirmada — CÓMPUTO no necesita detalle a nivel de fila. Enmienda de R15: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]; eliminados nivel_1..5 y macropartida; agregado tipologia (crudo del mapeo, pre-normalización). EN DISPUTA vacío. Próximo foco: #10 (frontera GCP+Polars ↔ PQ/Sheets) y #11 (resolución de versión vigente), ambos en Bloque 3.
 Corrección dentro de S10: las filas NO_MATCH se excluyen también de la Tabla 3 (no solo de Tabla 1 y 2); R8 enmendada en consecuencia (S10). tipologia en Tabla 3 es no nulo por construcción. R11 enmendada en simetría: las filas residuales de estatus no reconocido también se excluyen de la Tabla 3 — la Tabla 3 contiene exclusivamente filas MATCHED ruteadas a R9 o R10. Retirada la entrada R15 obsoleta del ledger que aún declaraba el esquema antiguo de Tabla 3. Tachado el residuo resuelto en grieta C (§6) y corregido el marcador EN CURSO obsoleto en §7.
+
+**S11 — 2026-06-19**: Bloque 3. Cierre de #11: mecanismo de resolución de versión vigente para archivos PR (R23–R26). Recorrido recursivo bajo ruta_archivo; carpetas con patrón <PREFIJO>_SEM_<AAAAMMDD>; fecha extraída del nombre de carpeta (nunca mtime, rechazado por inconsistencia bajo sync de Drive); match exacto de nombre_programa sensible a mayúsculas/espacios (homologado R18); selección por fecha máxima. Carpetas no conformes ignoradas sin abortar (R24). Cero coincidencias o empate en fecha máxima → abort multiobra completo (R25, R26), homologado a R16/R18. Cardinalidad de la hoja de programas vigentes corregida: una fila por (obra, macro_partida), macro_partida embebida en nombre_programa. Avance parcial de #10: frontera de salida resuelta — 3 tablas a BigQuery, PQ transitorio (Modelo 2) extrae vistas procesadas, split de motor Opción C (Polars dueño de reglas de fila hasta R8 + staging; BigQuery dueño de R4/R9/R10 + vistas de servicio); descartadas Opción A (dispersa no-lossy) y B (BigQuery pasivo, sin learning) (5.7, D-10.1/2/3). Restan en #10: (c) mecanismo Sheets, (d) interfaz CÓMPUTO, fuente de entrada Drive/GCS, motor del artefacto R11. Apertura de #13 (vigencia de Tabla Mapeo, análogo a #11, sin estructura declarada). Apertura de #14 (entorno de ejecución de Polars en PR — corregido supuesto erróneo de Colab, que pertenece a MIDAS). Próximo foco: #14 (entorno de ejecución, gatea fuente de entrada) o resto de #10, a decisión de Alberto.
