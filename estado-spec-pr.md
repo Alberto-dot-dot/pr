@@ -2,10 +2,10 @@
 
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
 
-**Versión:** S8 → S9, fecha 2026-06-18.
-**Sesión de origen:** Bloque 2 (Domain) — cierre de #6 (definición de "unidad"; corrección del grano: R4 retirada y reemplazada por R4-T1 y R4-T2; R8 enmendada; precondición estructural de conteo declarada).
+**Versión:** S9 → S10, fecha 2026-06-18.
+**Sesión de origen:** Bloque 0/3 (Contrato de consumo y posición en grafo) — cierre de los 3 ítems EN DISPUTA; declaración de CÓMPUTO como módulo nombrado en el grafo de PLAN; enmienda de esquema Tabla 3 (R15 enmendada).
 **Módulo en foco:** PR — scope-lock activo (un solo módulo hasta PENDIENTE crítico vacío)
-**Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada), R9–R22, R6.1 borde. R4 retirada en S9.
+**Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada S9/S10), R9–R10, R11 (enmendada S10), R12–R22, R6.1 borde. R4 retirada en S9. R15 enmendada en S10: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]. EN DISPUTA vacío desde S10.
 **Test de verificabilidad (Definition of Done):** una regla está DEFINIDA si y solo si se expresa como
 `DADO [precondición] CUANDO [evento] ENTONCES el sistema DEBE [resultado observable]`, sin huecos.
 Si no, va a PENDIENTE. No se juzga ambigüedad por intuición; se aplica este test.
@@ -49,8 +49,10 @@ Semántica de niveles declarada: N1 frente de trabajo · N2 edificio/torre · N3
 
 1. **Append PR Finalizado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R9 (criterio completo: 5.2/R9; ya no se reduce a la literal única "FINALIZADA"). Esquema declarado: `[obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64, count_unidades:UInt32]`. id_tipologia no nulo por construcción: las filas NO_MATCH son excluidas del output final antes de la agregación (R8 enmendada, R4-T1). Excluye el campo fecha por decisión de esquema, no por vaciamiento semántico (R21).
 2. **Append PR Programado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R10 (criterio completo: 5.2/R10). Esquema declarado: `[obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64, fecha:Date, count_unidades:UInt32]`. id_tipologia no nulo por construcción: las filas NO_MATCH son excluidas del output final antes de la agregación (R8 enmendada, R4-T2). Semántica de `fecha` fijada por R19; validación ante nulo/malformado por R22. La distribución de count_unidades por fecha es el resultado correcto e intencional (R4-T2): no se colapsa.
-3. **Reporte desnormalizado (humano)** — unión de ambos estados, desnormalizada. Esquema declarado: `[estatus, nombre_actividad, nivel_1..5, fecha, macropartida, obra:Utf8]`. La columna usar se excluye del esquema de salida: toda fila sobreviviente al gate de R14 tiene USAR=="SI" por construcción, por lo que la columna sería constante y no informativa (R15). 
-El campo `estatus` se puebla exclusivamente desde `ESTATUS C.CLOUD` crudo, sin transformación (R12). El campo `fecha` se puebla exclusivamente desde el valor crudo de FECHA de esa fila, sin transformación ni agregación, al grano de fila original (R20). Ningún otro campo de esta tabla cambia de fuente: la tabla 3 conserva, sin excepciones, el contrato original de consumir columnas crudas en su totalidad (decisión explícita de la sesión S5 — ver bitácora).
+3. **Reporte desnormalizado (humano)** — unión de ambos estados, desnormalizada. Esquema declarado (enmendado S10): `[obra:Utf8, estatus:Utf8, nombre_actividad:Utf8, tipologia:Utf8, fecha:Date]`. La columna usar se excluye: toda fila sobreviviente al gate de R14 tiene USAR=="SI" por construcción (R15). Los campos nivel_1..5 y macropartida se excluyen: el consumidor humano no requiere detalle de ubicación ni tipo de actividad (R15 enmendada, S10).
+Declaraciones de fuente por campo: `obra` — derivada vía R3 (substring antes del primer "_" en nombre_programa); `estatus` — valor crudo de ESTATUS C.CLOUD, sin transformación (R12); `nombre_actividad` — columna cruda ACTIVIDAD del archivo PR; `tipologia` — columna cruda Tipologia del archivo de mapeo, pre-normalización, disponible tras el join R7; no nulo por construcción: las filas NO_MATCH son excluidas de la Tabla 3 antes del armado (R8 enmendada S10); `fecha` — columna cruda FECHA del archivo PR, sin transformación (R20).
+La tabla 3 conserva, sin excepciones, el contrato de consumir valores crudos (5.1, R12). Membresía de la Tabla 3: solo filas MATCHED (R8 enmendada S10) y solo filas ruteadas a Finalizado o Programado (R9/R10); las residuales de estatus no reconocido (R11 enmendada S10) quedan excluidas, en simetría con las NO_MATCH.
+
 > Términos indefinidos dentro de esta sección: ninguno. #6 cerrado en S9: "unidad" definida, grano corregido (R4-T1, R4-T2), R8 enmendada.
 
 ## 5. REGLAS DE NEGOCIO — DOMAIN (Bloque 2)
@@ -74,15 +76,17 @@ R14 [cierra #5, gating] DADO una fila de PR cuyo valor crudo de USAR es distinto
    pérdida silenciosa de filas válidas ante variación de casing o
    espacios, bajo el supuesto declarado de dominio cerrado {SI, NO}.
 
-R15 [cierra #5, esquema Tabla 3] DADO que toda fila sobreviviente a R14
+R15 [cierra #5, esquema Tabla 3; enmendada S10] DADO que toda fila sobreviviente a R14
    tiene USAR=="SI" por construcción
-   CUANDO se define el esquema de salida de la Tabla 3 (reporte
-   desnormalizado)
-   ENTONCES el sistema DEBE excluir la columna usar de dicho esquema.
-   Esquema actualizado en sección 4:
-   [estatus, nombre_actividad, nivel_1..5, fecha_inicio, macropartida, obra:Utf8].
-   Esta exclusión es específica a usar y no establece precedente para
-   ninguna otra columna; ESTATUS C.CLOUD permanece en Tabla 3 vía R12.
+   CUANDO se define el esquema de salida de la Tabla 3 (reporte desnormalizado)
+   ENTONCES el sistema DEBE excluir la columna usar (constante por construcción),
+   excluir nivel_1..5 y macropartida (el consumidor humano no requiere detalle de
+   ubicación ni tipo de actividad), e incluir tipologia como el valor crudo de la
+   columna Tipologia del archivo de mapeo, pre-normalización, disponible tras el join R7.
+   tipologia es no nulo por construcción: solo filas MATCHED integran la Tabla 3 (ver R8 enmendada S10).
+   Esquema vigente (enmendado S10):
+   [obra:Utf8, estatus:Utf8, nombre_actividad:Utf8, tipologia:Utf8, fecha:Date].
+   ESTATUS C.CLOUD permanece en Tabla 3 como campo estatus vía R12.
 
 R1 [cierra #1] DADO una fila de PR con ACTIVIDAD no nula
    CUANDO se construye su identidad
@@ -164,18 +168,20 @@ R7 [join, cierra #2] DADO una fila de PR con sus cinco niveles
    obra_norm del mapeo se deriva de su columna Obra cruda vía R5; R3 no aplica al
    mapeo (no hay parseo de nombre de archivo).
 
-R8 [cierra #12, enmendada en S9] DADO una fila de PR cuya llave (obra_norm, N1_norm..N5_norm)
+R8 [cierra #12, enmendada en S9 y S10] DADO una fila de PR cuya llave (obra_norm, N1_norm..N5_norm)
    no tiene contraparte en el mapeo de tipologías
    CUANDO se ejecuta el join (R7)
    ENTONCES el sistema DEBE asignar id_tipologia = null, marcar
-   tipologia_status = NO_MATCH, excluir la fila del output final de Tabla 1 y
-   Tabla 2, y registrarla en el reporte de reconciliación para tratamiento
-   posterior por el analista. El pipeline no se detiene.
+   tipologia_status = NO_MATCH, excluir la fila del output final de Tabla 1,
+   Tabla 2 y Tabla 3, y registrarla en el reporte de reconciliación para
+   tratamiento posterior por el analista. El pipeline no se detiene.
    tipologia_status es un enum binario interno por fila {MATCHED, NO_MATCH}:
    las filas con match llevan MATCHED. Es una columna de enrutamiento interno;
    no aparece en ningún esquema de output final.
    Solo las filas con tipologia_status = MATCHED pasan a la agregación de R4-T1
    y R4-T2; id_tipologia es no nulo en ambos outputs finales por construcción.
+   La Tabla 3 también consume exclusivamente filas MATCHED: tipologia es no nulo
+   en su esquema por construcción (enmienda S10).
    El reporte de reconciliación DEBE contener al menos las tuplas distintas de
    ubicación sin match (obra + N1..N5); esquema fino y destino → Bloque 3.
    Enmienda respecto a versión provisional: el contrato de consumo (E) está
@@ -212,12 +218,16 @@ R10 [cierra #4, ruteo Programado] DADO una fila de PR
    CUANDO ESTATUS_C_CLOUD_norm ∈ {nueva, "0", null, ""}
    ENTONCES el sistema DEBE rutear la fila a Append PR Programado.
 
-R11 [cierra #4, disposición residual, no-lossy] DADO una fila de PR cuyo
+R11 [cierra #4, disposición residual, no-lossy, enmendada S10] DADO una fila de PR cuyo
    ESTATUS_C_CLOUD_norm no pertenece ni al conjunto de R9 ni al de R10
    CUANDO se ejecuta el filtro
    ENTONCES el sistema DEBE conservar la fila (no descartarla), rutearla a
    una cola de reconciliación/excepción no-lossy, y NO asignarla a Append PR
-   Finalizado ni a Append PR Programado. Homologado en espíritu a R8: ningún
+   Finalizado ni a Append PR Programado. Adicionalmente, la fila se excluye de
+   la Tabla 3 (reporte humano): la Tabla 3 consume exclusivamente filas ruteadas
+   a Finalizado (R9) o Programado (R10), por lo que una fila residual, que no
+   pertenece a ninguno de los dos estados, no aparece en la unión (enmienda S10,
+   simétrica a la exclusión de NO_MATCH en R8). Homologado en espíritu a R8: ningún
    estatus no reconocido se pierde silenciosamente. Identidad exacta del
    artefacto de destino (¿mismo reporte de reconciliación de R8 sirviendo dos
    modos de fallo, o uno separado?) y su esquema fino: diferido a Bloque 3,
@@ -361,11 +371,12 @@ en S8.
 
 ~~**B. Filtrado y estatus.** Dos columnas de estatus (`ESTATUS`, `ESTATUS C.CLOUD`): cuál gobierna el filtro no está declarado. Resuelto: `ESTATUS C.CLOUD` gobierna en exclusiva (5.2, R9–R13). Filas fuera de {FINALIZADA, Nueva}: destino no declarado (riesgo de drop silencioso). Resuelto: cola de reconciliación no-lossy, homologada a R8 (R11). Semántica de `USAR` (valores y efecto). Resuelto: gate destructivo upstream de toda la tubería, comparación contra valor crudo sin _norm, sin auditoría — excepción explícita a la postura no-lossy (R14); exclusión de la columna usar en el esquema de Tabla 3 (R15).~~
  
-**C. Agregación.** "Unidad" no definida; nivel de agrupación del count no declarado — ver #6. ~~`FECHA` cambia de significado según estatus (Programado conserva fecha, Finalizado la descarta) sin regla declarada.~~ Resuelto en #7: la hipótesis de que FECHA cambia de significado por estatus fue evaluada y descartada — su semántica es invariante (R19); Tabla 1 la excluye por decisión de esquema, no por vaciamiento semántico (R21); Tabla 3 la consume sin transformación (R20); validación activa ante nulo/malformado homologada a R2 (R22). Pendiente, ligado a #6: el mecanismo de derivación de fecha en Tabla 2 bajo el grano corregido de R4.
+**C. Agregación.** ~~"Unidad" no definida; nivel de agrupación del count no declarado — ver #6.~~ Resuelto en #6 (S9): "unidad" definida y grano fijado (R4-T1, R4-T2, §5.5). ~~`FECHA` cambia de significado según estatus (Programado conserva fecha, Finalizado la descarta) sin regla declarada.~~ Resuelto en #7: la hipótesis de que FECHA cambia de significado por estatus fue evaluada y descartada — su semántica es invariante (R19); Tabla 1 la excluye por decisión de esquema, no por vaciamiento semántico (R21); Tabla 3 la consume sin transformación (R20); validación activa ante nulo/malformado homologada a R2 (R22). ~~Pendiente, ligado a #6: el mecanismo de derivación de fecha en Tabla 2 bajo el grano corregido de R4.~~ Resuelto en #6 (S9): R4-T2 fija el grano de Tabla 2 con fecha.
  
 **D. Frontera arquitectónica.** Tensión entre "migrar todo a GCP+Polars" y "consumir vía PQ/Sheets". Sin definir: dónde aterrizan los outputs (BigQuery / GCS / Sheet), qué extrae PQ (crudo vs final), qué significa técnicamente "compatible con Sheets", y el mecanismo que resuelve "versión vigente" fuera de M.
  
-**E. Contrato de consumo y grafo.** El "MRP Excel" consumidor no está identificado contra el grafo del sistema (¿PLANTIR? ¿módulo sin nombre? ¿legado externo?). Riesgo: el consumidor actual espera 13 columnas a nivel de fila; el nuevo output entrega tablas agregadas (count). Si necesita detalle por ubicación, la agregación rompe el contrato.
+~~**E. Contrato de consumo y grafo.** El "MRP Excel" consumidor no está identificado contra el grafo del sistema (¿PLANTIR? ¿módulo sin nombre? ¿legado externo?). Riesgo: el consumidor actual espera 13 columnas a nivel de fila; el nuevo output entrega tablas agregadas (count). Si necesita detalle por ubicación, la agregación rompe el contrato.~~
+> Cerrado S10: consumidor = CÓMPUTO (módulo declarado). T1 y T2 entregan counts agregados; CÓMPUTO solo necesita (obra, id_tipologia, id_actividad, count_unidades [+ fecha en T2]) — contrato no roto. T3 entrega reporte humano directo con esquema enmendado.
  
 ~~**F. Precondiciones estructurales.** El artefacto "5 filas + 1 columna vacías" debe entrar al contrato de ingesta con su caso borde: ¿garantizado para todas las obras o hay desviaciones que rompen el lector? Reglas de normalización propias de PR no declaradas (¿reutilizan las de MIDAS o son propias?). Resuelto: layout universal sin excepciones para ninguna obra; filas 1–5 y columnas A–S ruido no validado, descarte incondicional; fila 6 = encabezado, columna T = origen; formato exclusivo .xlsx; validación literal completa de encabezados con abort global de pipeline ante cualquier discrepancia (R16–R18). Nota: la segunda parte de esta grieta (reglas de normalización propias de PR) ya estaba resuelta desde S2 — pipeline 5.1 es propio de PR, no reutiliza MIDAS — y nunca se tachó; queda corregido aquí.~~
 
@@ -374,10 +385,10 @@ en S8.
  
 Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIENTE crítico abierto.
  
-- **Bloque 0 — Contrato de consumo y posición en grafo** (resuelve E). Sistema-nivel; puede quedar EN DISPUTA pero al menos fija formato de entrega.
-- **Bloque 1 — Objetivo + Requerimientos** (archivo). Objetivo casi listo; requerimientos dependen de B0.
-- **Bloque 2 — Domain** (archivo) ← **EN CURSO**. Resuelve A, B, C, F. Núcleo Socrático.
-- **Bloque 3 — Arquitectura + Stack** (archivo). Resuelve D.
+- **Bloque 0 — Contrato de consumo y posición en grafo** ← **CERRADO (S10)**. Resolvió E.
+- **Bloque 1 — Objetivo + Requerimientos** (archivo) ← **DESBLOQUEADO (S10)**, no iniciado. Objetivo casi listo; requerimientos dependían de B0, ya cerrado.
+- **Bloque 2 — Domain** (archivo) ← **CERRADO (S9)**. Resolvió A, B, C, F.
+- **Bloque 3 — Arquitectura + Stack** (archivo) ← **EN CURSO**. Resuelve D (#10, #11).
 - **Bloque 4 — Roadmap por fases** (archivo). Depende de B2 + B3. Checkpoints críticos candidatos: integridad de llaves con join sin pérdida; resolución determinista de versión vigente.
 - **Bloque 5 — Development Fase 1** (archivo). Depende de B4.
 - **Bloque 6 — CLAUDE.md** (condicional). Solo si arquitectura sin Colab y contrato de PR exigen cambios de gobernanza.
@@ -426,8 +437,8 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   correctamente; validación nombre_archivo ↔ columna Obra diferida a
   diseño futuro. Riesgo de null por desajuste: aceptado conscientemente.
 
-- Disposición del no-match referencial PR↔mapeo (enmendada S9): fila excluida del output
-  final de Tabla 1 y Tabla 2; id_tipologia = null; tipologia_status = NO_MATCH (enum
+- Disposición del no-match referencial PR↔mapeo (enmendada S9 y S10): fila excluida del output
+  final de Tabla 1, Tabla 2 y Tabla 3; id_tipologia = null; tipologia_status = NO_MATCH (enum
   binario interno {MATCHED, NO_MATCH} — columna de enrutamiento interno, no aparece en
   ningún output final); registrada en reporte de reconciliación para tratamiento por
   analista. id_tipologia no nulo en outputs finales de Tabla 1 y Tabla 2 por construcción.
@@ -445,10 +456,11 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 - Conjuntos de ruteo del filtro de vigencia: Finalizado (R9), Programado
   (R10). [B]
   
-- Disposición residual no-lossy para ESTATUS_C_CLOUD_norm no reconocido:
-  cola de reconciliación/excepción, exclusión de ambas tablas append,
-  homologada a R8. Identidad exacta del artefacto destino diferida a
-  Bloque 3, igual que R8. [B] (R11)
+- Disposición residual no-lossy para ESTATUS_C_CLOUD_norm no reconocido
+  (enmendada S10): cola de reconciliación/excepción, exclusión de ambas tablas
+  append y de la Tabla 3 (solo filas ruteadas a R9/R10 integran la Tabla 3),
+  homologada a R8 en simetría. Identidad exacta del artefacto destino diferida a
+  Bloque 3, igual que R8. [B] (R11 enmendada)
 
 - Mapeo del campo estatus en la tabla 3: exclusivamente desde ESTATUS
   C.CLOUD crudo, sin transformación. Reafirma sin excepciones que la tabla
@@ -463,10 +475,11 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   artefacto de reconciliación — riesgo aceptado de pérdida silenciosa ante
   variación de casing/espacios. [B] (R14)
 
-- Esquema de salida de la Tabla 3 actualizado: exclusión de la columna
+~~- Esquema de salida de la Tabla 3 actualizado: exclusión de la columna
   usar (constante y no informativa tras el gate de R14). Esquema vigente:
   [estatus, nombre_actividad, nivel_1..5, fecha_inicio, macropartida,
-  obra:Utf8]. [B] (R15)
+  obra:Utf8]. [B] (R15)~~
+> Superado por la enmienda S10 de R15. Ver entrada vigente más abajo.
 
 - Gate de ingesta estructural para archivos PR: layout universal sin
   excepciones para ninguna obra. Formato de archivo restringido a .xlsx
@@ -494,6 +507,26 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   MATCHED en el grupo de agregación, válido como proxy de unidades físicas bajo el
   invariante declarado. Nombre final del campo: count_unidades. [C] (Sección 5.5, R4-T1, R4-T2)
 
+- Posición de PR en el grafo de PLAN: T1 y T2 → CÓMPUTO; T3 → consumidor humano directo (Google Sheets / Excel). 
+   PR no alimenta a PLANTIR. [EN DISPUTA → cerrado S10]
+
+- CÓMPUTO declarado como módulo nombrado en el grafo de PLAN. Función: recibe unidades ejecutadas/programadas 
+   de PR (T1, T2) y rendimiento por tipología de MOLD; calcula material ejecutado y material programado; 
+   expone el resultado al usuario humano final. Inputs: PR (T1, T2) + MOLD (yield). Output: material ejecutado, 
+   material programado. Implementación actual: Excel + Power Query + Sheets, 
+   sujeto a refactorización. Reemplaza el "módulo sin nombre" del grafo original. [EN DISPUTA → cerrado S10]
+
+- Compatibilidad del esquema agregado T1/T2 con CÓMPUTO confirmada: CÓMPUTO 
+   no necesita columnas a nivel de fila (nivel_1..5, nombre_actividad, macropartida). 
+   El contrato de 13 columnas pertenecía al pipeline anterior y no aplica al nuevo diseño. [EN DISPUTA → cerrado S10]
+
+- Esquema Tabla 3 enmendado (R15 enmendada, S10): reducido a 
+   [obra:Utf8, estatus:Utf8, nombre_actividad:Utf8, tipologia:Utf8, fecha:Date]. 
+   Eliminados: nivel_1..5, macropartida. Agregado: tipologia (valor crudo de la columna Tipologia del mapeo, pre-normalización). 
+   Solo filas MATCHED: NO_MATCH excluidas de la Tabla 3 (R8 enmendada S10); tipologia no nulo por construcción. 
+   Fuentes declaradas por campo en §4 y R15. [B]
+
+
 ### PARCIALMENTE DEFINIDO
 - Canonicalización de `""` vs `null` en ESTATUS C.CLOUD. Ambos valores ya
   están aceptados independientemente en el conjunto de ruteo de Programado
@@ -509,10 +542,10 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 11. Mecanismo de resolución de "versión vigente". [D] (Bloque 3)
 
 ### EN DISPUTA
-- Posición de PR en el grafo de dependencias del sistema PLAN.
-- Identidad del consumidor "MRP Excel": ¿PLANTIR, módulo sin nombre o legado externo?
-- Si la salida agregada (count) rompe al consumidor que hoy espera 13
-  columnas a nivel de fila.
+~~- Posición de PR en el grafo de dependencias del sistema PLAN.~~
+~~- Identidad del consumidor "MRP Excel": ¿PLANTIR, módulo sin nombre o legado externo?~~
+~~- Si la salida agregada (count) rompe al consumidor que hoy espera 13 columnas a nivel de fila.~~
+> Los tres ítems cerrados en S10. Ver DEFINIDO.
 
 ---
  
@@ -535,3 +568,6 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 **S8 — 2026-06-18**: cierre de #7. Decisiones: semántica de FECHA fijada como invariante respecto a estatus y ruteo de salida — fecha real de inicio de actividad en ubicación física específica, fuera del pipeline 5.1 (R19); Tabla 3 la consume como passthrough crudo al grano de fila original (R20); Tabla 1 la excluye por decisión de esquema confirmada — verificado sin conflicto contra el mandato de "ritmos históricos" de PR, que se calcula fuera de esta tabla (R21); validación activa no-lossy ante FECHA nulo/en blanco/mal formado, homologada a R2, defensiva ante una violación de supuesto no observada hoy en inspección empírica (R22). Nomenclatura de salida fijada: `fecha`. Hipótesis original de auditoría (FECHA cambia de significado por estatus) evaluada y descartada. Grieta nueva registrada dentro de #6: la corrección del grano de R4 ahora también debe resolver el mecanismo de derivación de fecha en Tabla 2; Alberto propuso un grano candidato (obra_norm, id_actividad, id_tipologia [+ fecha en Tabla 2]), recibido sin auditar. Próximo foco candidato: #6 (semántica de "unidad" y corrección del grano de R4, incorporando la propuesta recibida) o #10/#11 (Bloque 3), a decisión de Alberto.
 
 **S9 — 2026-06-18**: cierre de #6. Decisiones: "unidad" definida como unidad física de ejecución hiper-localizada (departamento, ciclo, unidad de ejecución real); invariante estructural declarado: una fila superviviente al gate R14 = una unidad física, con la precondición de que (obra_norm, id_actividad, N1_norm..N5_norm) es único por archivo PR — el pipeline lo asume sin verificarlo activamente. count_unidades = conteo de filas MATCHED en el grupo, válido bajo el invariante; nombre final confirmado: count_unidades. R4 retirada y reemplazada por R4-T1 (grano Tabla 1: obra_norm, id_actividad, id_tipologia, filas MATCHED únicamente) y R4-T2 (grano Tabla 2: obra_norm, id_actividad, id_tipologia, fecha, filas MATCHED únicamente; distribución por fecha intencional y no colapsable). R8 enmendada: las filas NO_MATCH se excluyen del output final de Tabla 1 y Tabla 2 y van únicamente al reporte de reconciliación; id_tipologia no nulo en ambos outputs finales por construcción; tipologia_status es columna interna de enrutamiento, no aparece en outputs finales. Contrato de consumo de E parcialmente resuelto para Tabla 1 y Tabla 2. Próximo foco candidato: #10/#11 (Bloque 3 — frontera GCP+Polars ↔ PQ/Sheets y mecanismo de resolución de versión vigente), a decisión de Alberto.
+
+**S10 — 2026-06-18**: cierre de los 3 ítems EN DISPUTA. Decisiones: PR alimenta CÓMPUTO (T1, T2) y al consumidor humano directo (T3); no alimenta PLANTIR. El "MRP Excel" consumidor es CÓMPUTO, módulo declarado formalmente en el grafo de PLAN con inputs PR+MOLD y output de material ejecutado/programado; reemplaza al "módulo sin nombre" del grafo original. Compatibilidad del esquema agregado de T1/T2 con CÓMPUTO confirmada — CÓMPUTO no necesita detalle a nivel de fila. Enmienda de R15: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]; eliminados nivel_1..5 y macropartida; agregado tipologia (crudo del mapeo, pre-normalización). EN DISPUTA vacío. Próximo foco: #10 (frontera GCP+Polars ↔ PQ/Sheets) y #11 (resolución de versión vigente), ambos en Bloque 3.
+Corrección dentro de S10: las filas NO_MATCH se excluyen también de la Tabla 3 (no solo de Tabla 1 y 2); R8 enmendada en consecuencia (S10). tipologia en Tabla 3 es no nulo por construcción. R11 enmendada en simetría: las filas residuales de estatus no reconocido también se excluyen de la Tabla 3 — la Tabla 3 contiene exclusivamente filas MATCHED ruteadas a R9 o R10. Retirada la entrada R15 obsoleta del ledger que aún declaraba el esquema antiguo de Tabla 3. Tachado el residuo resuelto en grieta C (§6) y corregido el marcador EN CURSO obsoleto en §7.
