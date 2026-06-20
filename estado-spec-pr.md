@@ -2,8 +2,8 @@
 
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
 
-**Versión:** S10 → S11, fecha 2026-06-19.
-**Sesión de origen:** Bloque 3 (Arquitectura + Stack) — cierre de #11 (resolución de versión vigente, R23–R26); avance parcial de #10 (frontera de salida: BigQuery + split Polars/BigQuery vía Opción C); apertura de #13 (vigencia de Tabla Mapeo) y #14 (entorno de ejecución de Polars en PR).
+**Versión:** S11 → S12, fecha 2026-06-20.
+**Sesión de origen:** Bloque 3 (Arquitectura + Stack) — cierre de #14 (entorno de ejecución de Polars en PR: Cloud Run Jobs, disparo programado, perfil de ejecución validado, autenticación a Drive, mecánica de escritura a BigQuery); resuelve dentro de #10 la bifurcación de fuente de entrada (Drive, no GCS).
 **Módulo en foco:** PR — scope-lock activo (un solo módulo hasta PENDIENTE crítico vacío)
 **Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada S9/S10), R9–R10, R11 (enmendada S10), R12–R22, R23–R26 (S11, cierre #11), R6.1 borde. R4 retirada en S9. R15 enmendada en S10: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]. EN DISPUTA vacío desde S10.
 **Test de verificabilidad (Definition of Done):** una regla está DEFINIDA si y solo si se expresa como
@@ -459,6 +459,73 @@ esquema y destino siguen diferidos a Bloque 3 (consistente con R8/R11
 originales); la asignación de motor del artefacto R11 queda explícitamente
 abierta, no cerrada por defecto.
 
+### 5.8 Contrato de Entorno de Ejecución — Polars en PR [cierra #14]
+
+Estado: DEFINIDO. Resuelve el entorno de ejecución del pipeline Polars de PR
+dentro de GCP, su modelo de disparo, perfil de carga, autenticación a Drive,
+y la mecánica de escritura a BigQuery. Resuelve además, como consecuencia,
+la bifurcación de fuente de entrada (Drive vs GCS) que estaba abierta dentro
+de #10.
+
+D-14.1 [entorno de ejecución] El pipeline Polars de PR se ejecuta como un
+   Cloud Run Job — ejecución de tipo run-to-completion, sin servidor HTTP —,
+   no como un Cloud Run Service. Se descartan explícitamente: GCE (recurso
+   ocioso e injustificado para una carga semanal de pocos minutos), Dataflow
+   (sin caso de streaming ni escala que lo justifique), y Cloud Run Service
+   (impondría un contrato request/response sobre una tarea batch no
+   interactiva, sin necesidad).
+
+D-14.2 [modelo de disparo] El Job se invoca bajo un esquema programado
+   (scheduled), mediante Cloud Scheduler invocando la Cloud Run Jobs Execute
+   API — no on-demand, no event-driven por llegada de archivo. Día y hora
+   exactos son un parámetro de despliegue (indicativo: lunes 01:00 AM), no
+   una regla de negocio del sistema.
+
+D-14.3 [perfil de ejecución y dimensionamiento] Validado contra el peor caso
+   declarado: hasta 6–7 obras activas, hasta 4 archivos PR activos por obra
+   (según vigencia, hoja de programas vigentes), cada archivo con
+   aproximadamente 8.000–12.000 filas. Peor caso ≈ 24 archivos × ≤12.000
+   filas ≈ ≤288.000 filas por corrida semanal. Carga trivial para Polars
+   (cómputo en segundos); las cotas de recursos por defecto de Cloud Run
+   Jobs (CPU, memoria, timeout) son suficientes sin requerir un tier de
+   recursos elevado.
+
+D-14.4 [autenticación a Drive] Tanto los archivos PR por obra (estructura de
+   carpetas recorrida por R23–R26, bajo ruta_archivo) como la hoja de
+   programas vigentes (§3) residen en la misma Shared Drive. La service
+   account del Job se agrega como miembro directo de esa Shared Drive con
+   acceso de lectura. No se requiere domain-wide delegation ni
+   sincronización forzada de los archivos fuente a GCS: el Job accede a
+   ambos directamente vía la Drive API. Esta decisión resuelve, dentro de
+   #10, la bifurcación de ubicación de fuentes de entrada a favor de Drive
+   (no GCS).
+
+D-14.5 [mecánica de escritura a BigQuery — disposición y atomicidad] Cada
+   corrida semanal reemplaza por completo el contenido de stg_matched y
+   recon_nomatch — snapshot de estado actual, no un log histórico
+   acumulativo —, decisión consistente con que PR alimenta decisiones
+   operativas vigentes (despacho, detención de despacho, lot sizing), no
+   análisis histórico. El reemplazo es diferido y atómico respecto de los
+   gates de abort ya existentes: el Job procesa y valida las obras
+   completas del batch en memoria — pipeline 5.1, gate R14, hashes R1/R6,
+   join R7, disposición R8, y los gates estructurales y de vigencia R16–R18
+   y R23–R26 — antes de ejecutar una única escritura a BigQuery
+   (WRITE_TRUNCATE sobre stg_matched y recon_nomatch). La escritura se
+   ejecuta solo si la corrida completa no disparó ningún abort. Si R16,
+   R18, R25 o R26 disparan en cualquier punto del batch, la escritura nunca
+   se alcanza, y stg_matched/recon_nomatch de la semana anterior quedan
+   intactos sin modificación — CÓMPUTO continúa operando sobre el último
+   snapshot exitoso. Esta decisión no modifica R16, R18, R25 ni R26; define
+   por primera vez qué significa concretamente "no producir salida" ahora
+   que el destino es una tabla persistente y no un archivo generado una
+   sola vez.
+   Consecuencia aceptada explícitamente (S12): dado que R16/R18 abortan la
+   corrida completa ante la falla estructural de un solo archivo de
+   cualquier obra, un defecto de encabezado en una sola obra congela el
+   refresco de datos de las 6–7 obras esa semana — no solo el de la obra
+   con el archivo defectuoso. Alberto evaluó esta consecuencia
+   explícitamente y la aceptó sin solicitar cambios a R16–R18/R25–R26.
+
 
 ## 6. AUDITORÍA — GRIETAS ABIERTAS
 
@@ -470,7 +537,7 @@ abierta, no cerrada por defecto.
  
 **C. Agregación.** ~~"Unidad" no definida; nivel de agrupación del count no declarado — ver #6.~~ Resuelto en #6 (S9): "unidad" definida y grano fijado (R4-T1, R4-T2, §5.5). ~~`FECHA` cambia de significado según estatus (Programado conserva fecha, Finalizado la descarta) sin regla declarada.~~ Resuelto en #7: la hipótesis de que FECHA cambia de significado por estatus fue evaluada y descartada — su semántica es invariante (R19); Tabla 1 la excluye por decisión de esquema, no por vaciamiento semántico (R21); Tabla 3 la consume sin transformación (R20); validación activa ante nulo/malformado homologada a R2 (R22). ~~Pendiente, ligado a #6: el mecanismo de derivación de fecha en Tabla 2 bajo el grano corregido de R4.~~ Resuelto en #6 (S9): R4-T2 fija el grano de Tabla 2 con fecha.
  
-**D. Frontera arquitectónica.** Tensión entre "migrar todo a GCP+Polars" y "consumir vía PQ/Sheets". Avance parcial S11 (5.7): outputs aterrizan en BigQuery (D-10.1); PQ extrae tablas procesadas, no crudos, y es transitorio (D-10.2); split Polars/BigQuery vía Opción C (D-10.3). ~~el mecanismo que resuelve "versión vigente" fuera de M~~ — resuelto para archivos PR en #11 (R23–R26, S11). Sin definir aún dentro de #10: (c) mecanismo técnico de conexión Sheets (Connected Sheets vs conector vs export); (d) interfaz concreta de CÓMPUTO contra el landing point; ubicación de fuentes de entrada (Drive vs GCS); y entorno de ejecución de Polars (#14), que bloquea la decisión de entrada.**D. Frontera arquitectónica.** Tensión entre "migrar todo a GCP+Polars" y "consumir vía PQ/Sheets". Sin definir: dónde aterrizan los outputs (BigQuery / GCS / Sheet), qué extrae PQ (crudo vs final), qué significa técnicamente "compatible con Sheets". ~~y el mecanismo que resuelve "versión vigente" fuera de M~~ — resuelto para archivos PR en #11 (R23–R26, S11); el mecanismo vive dentro del recorrido del árbol de carpetas, no depende de PQ/M.
+**D. Frontera arquitectónica.** Tensión entre "migrar todo a GCP+Polars" y "consumir vía PQ/Sheets". Avance parcial S11 (5.7): outputs aterrizan en BigQuery (D-10.1); PQ extrae tablas procesadas, no crudos, y es transitorio (D-10.2); split Polars/BigQuery vía Opción C (D-10.3). ~~el mecanismo que resuelve "versión vigente" fuera de M~~ — resuelto para archivos PR en #11 (R23–R26, S11). ~~entorno de ejecución de Polars (#14), que bloquea la decisión de entrada~~ — resuelto en #14 (S12, 5.8): Cloud Run Jobs, disparo programado vía Cloud Scheduler, perfil de carga validado, autenticación directa a Shared Drive (D-14.1–D-14.4). Como consecuencia, la bifurcación de ubicación de fuentes de entrada (Drive vs GCS) queda resuelta a favor de Drive (D-14.4). Sin definir aún dentro de #10: (c) mecanismo técnico de conexión Sheets; (d) interfaz concreta de CÓMPUTO contra el landing point; motor del artefacto residual de R11.x
 
 **G. Resolución de vigencia — Tabla Mapeo de Tipologías.** El mecanismo de R23–R26 resuelve vigencia exclusivamente para archivos PR (hoja de programas vigentes, §3). La Tabla Mapeo de Tipologías se declara en §3 como "un archivo por obra", sin estructura de carpeta ni mecanismo de versionado definidos. Pendiente: ¿existe versionado real (carpetas por fecha, análogas a R23) o es un archivo verdaderamente único y estático por obra, sin ambigüedad de "vigente"? Si hay versionado, ubicación de carpeta y patrón de nombre no declarados. [G] #13.
  
@@ -487,7 +554,7 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 - **Bloque 0 — Contrato de consumo y posición en grafo** ← **CERRADO (S10)**. Resolvió E.
 - **Bloque 1 — Objetivo + Requerimientos** (archivo) ← **DESBLOQUEADO (S10)**, no iniciado. Objetivo casi listo; requerimientos dependían de B0, ya cerrado.
 - **Bloque 2 — Domain** (archivo) ← **CERRADO (S9)**. Resolvió A, B, C, F.
-- **Bloque 3 — Arquitectura + Stack** (archivo) ← **EN CURSO**. #11 cerrado (S11, R23–R26). #10 avanzado parcialmente (S11, 5.7: D-10.1/D-10.2/D-10.3); restan (c) Sheets, (d) interfaz CÓMPUTO, fuente de entrada Drive/GCS, y #14 (entorno de ejecución). Resuelve D (#10, restante), G (#13) y #14.
+- **Bloque 3 — Arquitectura + Stack** (archivo) ← **EN CURSO**. #11 cerrado (S11, R23–R26). #14 cerrado (S12, 5.8). #10 avanzado parcialmente (S11, 5.7; S12 resuelve la fuente de entrada vía D-14.4); restan (c) Sheets, (d) interfaz CÓMPUTO, motor del artefacto R11. Resuelve D (#10, restante) y G (#13).
 - **Bloque 4 — Roadmap por fases** (archivo). Depende de B2 + B3. Checkpoints críticos candidatos: integridad de llaves con join sin pérdida; resolución determinista de versión vigente.
 - **Bloque 5 — Development Fase 1** (archivo). Depende de B4.
 - **Bloque 6 — CLAUDE.md** (condicional). Solo si arquitectura sin Colab y contrato de PR exigen cambios de gobernanza.
@@ -650,6 +717,29 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   servicio T1/T2/T3. Reglas de muerte de fila no-lossy (R8/R11/R14/R22)
   permanecen en Polars. [D] (5.7, D-10.1/D-10.2/D-10.3)
 
+  - Entorno de ejecución del pipeline Polars de PR (cierra #14): Cloud Run
+  Job (run-to-completion, sin servidor HTTP), no Cloud Run Service; GCE y
+  Dataflow descartados por sobredimensionamiento frente a la carga real
+  (D-14.1). Disparo programado vía Cloud Scheduler invocando la Cloud Run
+  Jobs Execute API; día/hora es parámetro de despliegue, no regla de
+  negocio (D-14.2). Dimensionamiento validado contra el peor caso
+  declarado (≤24 archivos PR activos, ≤12.000 filas cada uno, ≤288.000
+  filas/semana); cotas de recursos por defecto de Cloud Run Jobs
+  suficientes (D-14.3). Autenticación a Drive: archivos PR y hoja de
+  programas vigentes residen en la misma Shared Drive; service account
+  del Job agregada como miembro directo, sin domain-wide delegation ni
+  sincronización forzada a GCS (D-14.4) — resuelve, dentro de #10, la
+  bifurcación de fuente de entrada a favor de Drive. Mecánica de
+  escritura a BigQuery: reemplazo completo (no acumulativo) de
+  stg_matched y recon_nomatch en cada corrida semanal, diferido y atómico
+  respecto de los gates de abort existentes — la escritura solo se
+  ejecuta si la corrida completa (todas las obras, todos los gates R16–
+  R18/R23–R26) no disparó ningún abort; si dispara, la escritura nunca se
+  alcanza y el snapshot de la semana anterior queda intacto (D-14.5). No
+  modifica R16/R18/R25/R26. Consecuencia aceptada explícitamente: una
+  falla estructural en una sola obra congela el refresco de las 6–7 obras
+  esa semana, no solo el de la obra defectuosa. [D] (5.8, D-14.1–D-14.5)
+
 
 ### PARCIALMENTE DEFINIDO
 - Canonicalización de `""` vs `null` en ESTATUS C.CLOUD. Ambos valores ya
@@ -660,11 +750,7 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   distintos — relevante específicamente para el campo estatus de la tabla
   3 (R12), que al consumir el valor crudo sí distingue entre ambos.
 
-- Frontera GCP+Polars ↔ PQ/Sheets (#10): salida resuelta (BigQuery +
-  Opción C, 5.7). Abierto: (c) mecanismo de conexión Sheets; (d) interfaz
-  concreta de CÓMPUTO contra BigQuery; ubicación de fuentes de entrada
-  (Drive vs GCS); motor del artefacto residual de R11. Bloqueado en parte
-  por #14 (entorno de ejecución de Polars). [D] (Bloque 3)
+- Frontera GCP+Polars ↔ PQ/Sheets (#10): salida resuelta (BigQuery + Opción C, 5.7); fuente de entrada resuelta (Drive, vía D-14.4, S12). Abierto: (c) mecanismo de conexión Sheets; (d) interfaz concreta de CÓMPUTO contra BigQuery; motor del artefacto residual de R11. [D] (Bloque 3)
 
 ### PENDIENTE (crítico — bloquea generación de archivos)
 ~~6. [CERRADO EN S9 — ver Sección 5.5, R4-T1, R4-T2, R8 enmendada]~~
@@ -672,7 +758,8 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 ~~11. Mecanismo de resolución de "versión vigente" para archivos PR. [D] (Bloque 3)~~
 > Cerrado en S11. Ver Sección 5.6, R23–R26.
 13. Estructura de carpeta y mecanismo de resolución de "vigente" para la Tabla Mapeo de Tipologías — análogo a #11, sin estructura de carpeta declarada aún. [G] (Bloque 3)
-14. Entorno de ejecución del pipeline Polars de PR (Cloud Run / Function / GCE / Dataflow / otro) — no declarado. Bloquea la decisión de fuente de entrada (Drive vs GCS) y la mecánica de escritura a BigQuery. Surgido en S11 al descartar el supuesto erróneo de Colab (Colab pertenece a MIDAS, no a PR). [D] (Bloque 3)
+~~14. Entorno de ejecución del pipeline Polars de PR [...]. [D] (Bloque 3)~~
+> Cerrado en S12. Ver Sección 5.8, D-14.1–D-14.5.14. Entorno de ejecución del pipeline Polars de PR (Cloud Run / Function / GCE / Dataflow / otro) — no declarado. Bloquea la decisión de fuente de entrada (Drive vs GCS) y la mecánica de escritura a BigQuery. Surgido en S11 al descartar el supuesto erróneo de Colab (Colab pertenece a MIDAS, no a PR). [D] (Bloque 3)
 
 ### EN DISPUTA
 ~~- Posición de PR en el grafo de dependencias del sistema PLAN.~~
@@ -706,3 +793,5 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 Corrección dentro de S10: las filas NO_MATCH se excluyen también de la Tabla 3 (no solo de Tabla 1 y 2); R8 enmendada en consecuencia (S10). tipologia en Tabla 3 es no nulo por construcción. R11 enmendada en simetría: las filas residuales de estatus no reconocido también se excluyen de la Tabla 3 — la Tabla 3 contiene exclusivamente filas MATCHED ruteadas a R9 o R10. Retirada la entrada R15 obsoleta del ledger que aún declaraba el esquema antiguo de Tabla 3. Tachado el residuo resuelto en grieta C (§6) y corregido el marcador EN CURSO obsoleto en §7.
 
 **S11 — 2026-06-19**: Bloque 3. Cierre de #11: mecanismo de resolución de versión vigente para archivos PR (R23–R26). Recorrido recursivo bajo ruta_archivo; carpetas con patrón <PREFIJO>_SEM_<AAAAMMDD>; fecha extraída del nombre de carpeta (nunca mtime, rechazado por inconsistencia bajo sync de Drive); match exacto de nombre_programa sensible a mayúsculas/espacios (homologado R18); selección por fecha máxima. Carpetas no conformes ignoradas sin abortar (R24). Cero coincidencias o empate en fecha máxima → abort multiobra completo (R25, R26), homologado a R16/R18. Cardinalidad de la hoja de programas vigentes corregida: una fila por (obra, macro_partida), macro_partida embebida en nombre_programa. Avance parcial de #10: frontera de salida resuelta — 3 tablas a BigQuery, PQ transitorio (Modelo 2) extrae vistas procesadas, split de motor Opción C (Polars dueño de reglas de fila hasta R8 + staging; BigQuery dueño de R4/R9/R10 + vistas de servicio); descartadas Opción A (dispersa no-lossy) y B (BigQuery pasivo, sin learning) (5.7, D-10.1/2/3). Restan en #10: (c) mecanismo Sheets, (d) interfaz CÓMPUTO, fuente de entrada Drive/GCS, motor del artefacto R11. Apertura de #13 (vigencia de Tabla Mapeo, análogo a #11, sin estructura declarada). Apertura de #14 (entorno de ejecución de Polars en PR — corregido supuesto erróneo de Colab, que pertenece a MIDAS). Próximo foco: #14 (entorno de ejecución, gatea fuente de entrada) o resto de #10, a decisión de Alberto.
+
+**S12 — 2026-06-20**: cierre de #14. Decisiones: entorno de ejecución = Cloud Run Job (run-to-completion, sin servidor HTTP), no Cloud Run Service — descartados GCE (ocioso) y Dataflow (sin caso de streaming) (D-14.1). Disparo programado vía Cloud Scheduler → Cloud Run Jobs Execute API; día/hora es parámetro de despliegue, no regla de negocio (D-14.2). Dimensionamiento validado: peor caso ≤24 archivos PR activos (6–7 obras × hasta 4 archivos), ≤12.000 filas cada uno, ≤288.000 filas/semana — carga trivial para Polars, cotas por defecto de Cloud Run Jobs suficientes (D-14.3). Autenticación a Drive: tanto los archivos PR por obra como la hoja de programas vigentes residen en la misma Shared Drive; service account del Job agregada como miembro directo con lectura, sin domain-wide delegation ni sincronización forzada a GCS — resuelve, dentro de #10, la bifurcación de fuente de entrada a favor de Drive (D-14.4). Mecánica de escritura a BigQuery: reemplazo completo (no acumulativo, no histórico) de stg_matched y recon_nomatch cada corrida semanal, justificado por la naturaleza operativa de PR (alimenta despacho, lot sizing — no análisis histórico); el reemplazo es diferido y atómico respecto de los gates de abort existentes (R16/R18/R25/R26): la escritura única a BigQuery solo se ejecuta si la corrida completa de las 6–7 obras no disparó ningún abort; si dispara, la escritura nunca se alcanza y el snapshot de la semana anterior permanece intacto — no se modifica ningún gate existente (D-14.5). Consecuencia auditada y aceptada explícitamente por Alberto: una falla estructural (R16/R18) en una sola obra congela el refresco de datos de las 6–7 obras esa semana, no solo el de la obra defectuosa. Auditoría de proceso: se identificó y corrigió una conflación inicial entre Cloud Run Service y Cloud Run Jobs antes de aceptar la decisión de entorno. #14 cerrado. Como consecuencia directa, #10 se reduce a: (c) mecanismo de conexión Sheets, (d) interfaz concreta de CÓMPUTO, motor del artefacto residual de R11. Próximo foco candidato: resto de #10 (Sheets/CÓMPUTO/artefacto R11) o #13 (vigencia de Tabla Mapeo de Tipologías), a decisión de Alberto.
