@@ -2,10 +2,11 @@
 
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
 
-**Versión:** S12 → S13, fecha 2026-06-20.
-**Sesión de origen:** Bloque 3 (Arquitectura + Stack) — cierre parcial de #10: sub-item (d) resuelto mediante corrección de alcance — PR define su propio contrato de frontera de consumo (esquema + señal de frescura + atomicidad), el mecanismo de lectura interno de CÓMPUTO queda explícitamente fuera de alcance. Cierra la señal de frescura (R27, nueva §5.9) y confirma la atomicidad de D-14.5 como suficiente. Restan en #10: (c) mecanismo de conexión Sheets, motor del artefacto residual de R11.
+**Versión:** S13 → S14, fecha 2026-06-20.
+**Sesión de origen:** Bloque 3 (Arquitectura + Stack) — cierre TOTAL de #10. Sub-item (c): mecanismo de conexión de Sheets/Power Query para T1/T2/T3 (R28, nueva §5.10); partición de datasets staging/serving vía authorized views (R29, §5.10; D-10.4 en §5.7); retirada la restricción provisional "los analistas nunca acceden a T1/T2" — leen T1/T2 (vía PQ) y T3 (vía Connected Sheets) bajo identidad individual; R8 enmendada (destino fino de recon_nomatch: dataset de staging oculto, distribución mediada exclusivamente por el dueño del sistema). Motor del artefacto residual de R11: vista de BigQuery simétrica a T1/T2, complementaria a R9∪R10, declarada dentro del dataset de staging oculto —no en el de servicio— para no heredar el grant IAM de analistas (R30, §5.10). #10 cierra en su totalidad. Único PENDIENTE crítico restante en Bloque 3: #13.
 **Módulo en foco:** PR — scope-lock activo (un solo módulo hasta PENDIENTE crítico vacío)
-**Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada S9/S10), R9–R10, R11 (enmendada S10), R12–R22, R23–R26 (S11, cierre #11), R27 (S13, nueva, §5.9, cierre parcial #10), R6.1 borde. R4 retirada en S9. R15 enmendada en S10: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]; enmendada nuevamente en S13 (R27): se agrega run_date. EN DISPUTA vacío desde S10.
+**Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada S9/S10/S14), R9–R10, R11 (enmendada S10), R12–R22, R23–R26 (S11, cierre #11), R27 (S13, §5.9, cierre parcial #10), R28–R30 (S14, nuevas, §5.10, cierre total #10), R6.1 borde. R4 retirada en S9. R15 enmendada en S10: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]; enmendada nuevamente en S13 (R27): se agrega run_date. EN DISPUTA vacío desde S10.
+
 **Test de verificabilidad (Definition of Done):** una regla está DEFINIDA si y solo si se expresa como
 `DADO [precondición] CUANDO [evento] ENTONCES el sistema DEBE [resultado observable]`, sin huecos.
 Si no, va a PENDIENTE. No se juzga ambigüedad por intuición; se aplica este test.
@@ -476,8 +477,23 @@ WRITE_TRUNCATE, diferida hasta corrida exitosa sin abort) es garantía de
 consumo suficiente para T1/T2/T3. Un consumidor que lea durante la
 ventana de escritura observará o el snapshot completo de la semana
 anterior, o el snapshot completo de la semana actual — nunca una mezcla
-parcial. No se requiere regla ni artefacto adicional; D-14.5 ya cubre
+parcial. No se requiere regla ni artefacto adicional. D-14.5 ya cubre
 esta garantía en su forma actual.
+
+D-10.4 [partición de datasets — staging oculto / serving expuesto, S14,
+cierre total de #10] El landing de BigQuery declarado en D-10.1 se precisa
+en dos datasets físicamente separados: un dataset de staging, destino
+exclusivo de la escritura WRITE_TRUNCATE del Job (D-14.5) — contiene
+stg_matched y recon_nomatch, nunca expuesto a analistas humanos —, y un
+dataset de servicio, que contiene las vistas T1, T2 y T3 (R4-T1, R4-T2,
+R15), declaradas como vistas autorizadas (BigQuery authorized views) contra
+el dataset de staging. Esta partición es la que permite que el rol IAM de
+lectura de los analistas individuales se otorgue exclusivamente sobre el
+dataset de servicio (R29, §5.10), sin requerir ni otorgar acceso transitivo
+al dataset de staging. La vista del artefacto residual de R11 (R30, §5.10)
+reutiliza este mismo dataset de staging como su ubicación, por la misma
+razón. No modifica D-10.1–D-10.3 ni D-14.5: precisa el destino físico
+dentro de BigQuery, no el motor que escribe ni la mecánica de escritura.
 
 ### 5.8 Contrato de Entorno de Ejecución — Polars en PR [cierra #14]
 
@@ -581,6 +597,83 @@ ENTONCES el sistema DEBE estampar en cada fila de ambas tablas una columna
    colisión intra-día entre un intento fallido y uno exitoso, porque el
    fallido nunca alcanza BigQuery.
 
+### 5.10 Contrato de Consumo Externo — Sheets / Power Query / Aislamiento de Datasets [cierra #10 en su totalidad]
+
+Estado: DEFINIDO. Resuelve los dos sub-items restantes de #10: (c) el
+mecanismo de conexión de Sheets/Power Query, y el motor + destino del
+artefacto residual de R11. Con esta subsección, #10 queda cerrado por
+completo.
+
+Gobernanza: este contrato resuelve cómo los analistas humanos y el proceso
+CÓMPUTO actual (Excel + Power Query) leen T1, T2 y T3 desde BigQuery, y cómo
+se garantiza que los artefactos de excepción no-lossy — stg_matched (vía
+recon_nomatch) y el residual de R11 — permanezcan inaccesibles a los
+analistas sin comprometer la capacidad de las vistas de servicio de leer
+internamente sus fuentes.
+
+R28 [cierra parcialmente #10, sub-item (c) — mecanismo de conexión]
+DADO un analista humano que requiere consultar T1, T2 o T3
+CUANDO accede a los datos desde su herramienta de consumo (Google Sheets vía
+   Connected Sheets para T3; Power Query en Excel para T1 y T2)
+ENTONCES el sistema DEBE exponer la vista correspondiente exclusivamente en
+   modo pull: la herramienta de consumo se conecta directamente a la vista
+   de BigQuery, sin ningún componente intermedio — agente, servicio o
+   script — que materialice o escriba los datos en la hoja; la
+   actualización (refresh) es ejecutada manualmente por el analista, nunca
+   de forma automática ni programada; la autenticación se ejecuta bajo la
+   identidad individual de Google del propio analista, sin credenciales
+   compartidas ni service account intermedia.
+   No introduce paso de escritura adicional sobre el output de PR: D-14.5
+   no se modifica, el único sink del Job sigue siendo BigQuery.
+
+R29 [cierra parcialmente #10, sub-item (c) — partición de datasets y
+   aislamiento de acceso]
+DADO que T1, T2 y T3 son vistas de BigQuery definidas sobre stg_matched (y,
+   para la disposición no-lossy, sobre recon_nomatch)
+CUANDO se diseña el modelo de acceso de lectura para analistas individuales
+ENTONCES el sistema DEBE alojar stg_matched y recon_nomatch en un dataset
+   de staging oculto, y las vistas T1, T2 y T3 en un dataset de servicio
+   separado, declarado como vista autorizada (BigQuery authorized views)
+   contra el dataset de staging. El rol IAM de lectura otorgado a cada
+   analista — identidad individual de Google, administrado exclusivamente
+   por el dueño del sistema — se concede únicamente sobre el dataset de
+   servicio (a nivel de dataset completo); bajo ninguna circunstancia se
+   otorga acceso, directo o transitivo, al dataset de staging.
+   Enmienda explícita (S14): se retira la restricción provisional "los
+   analistas nunca acceden a T1 y T2". Los analistas SÍ tienen lectura
+   sobre T1 y T2 (vía Power Query) además de T3 (vía Connected Sheets); el
+   aislamiento se redirige exclusivamente a stg_matched y recon_nomatch, no
+   a T1/T2.
+   Consecuencia aceptada explícitamente: bajo este modelo el analista puede
+   ver unidades agregadas de obras distintas a la suya (visibilidad
+   cross-obra) en T1/T2; no se considera bloqueante. Filtrado por obra, si
+   se requiere, pertenece al dashboard/CÓMPUTO consumidor, no a PR.
+
+Amendment a R8 (destino fino de recon_nomatch, S14): recon_nomatch reside
+   en el dataset de staging oculto (R29) y no es accesible a los analistas.
+   La distribución de su contenido — filas falladas y acciones correctivas
+   upstream — es responsabilidad exclusiva del dueño del sistema, gestionada
+   manualmente fuera del mecanismo de consumo automatizado de PR. No es
+   excepción a la postura no-lossy (la fila se conserva en staging); es una
+   decisión de canal de distribución, no de retención.
+
+R30 [cierra el motor y destino del artefacto residual de R11]
+DADO una fila MATCHED en stg_matched cuyo ESTATUS_C_CLOUD_norm no pertenece
+   a los conjuntos declarados en R9 ni en R10
+CUANDO se define el mecanismo de captura del residual de R11
+ENTONCES el sistema DEBE exponerla mediante una vista de BigQuery —simétrica
+   a T1/T2, con condición de membresía complementaria a R9 ∪ R10— declarada
+   dentro del dataset de staging oculto, no en el dataset de servicio, de
+   forma que herede el mismo perímetro de aislamiento que recon_nomatch y
+   quede excluida automáticamente del grant IAM de analistas otorgado a
+   nivel del dataset de servicio (R29).
+   La distribución de su contenido — filas con estatus no reconocido y
+   acciones correctivas upstream — es responsabilidad exclusiva del dueño
+   del sistema, gestionada manualmente, en simetría exacta con el
+   tratamiento de recon_nomatch (R8 enmendada S14).
+   No modifica D-10.3: el motor de evaluación de membresía de R9/R10
+   permanece en BigQuery; esta vista no introduce lógica nueva en Polars.
+
 
 ## 6. AUDITORÍA — GRIETAS ABIERTAS
 
@@ -592,7 +685,14 @@ ENTONCES el sistema DEBE estampar en cada fila de ambas tablas una columna
  
 **C. Agregación.** ~~"Unidad" no definida; nivel de agrupación del count no declarado — ver #6.~~ Resuelto en #6 (S9): "unidad" definida y grano fijado (R4-T1, R4-T2, §5.5). ~~`FECHA` cambia de significado según estatus (Programado conserva fecha, Finalizado la descarta) sin regla declarada.~~ Resuelto en #7: la hipótesis de que FECHA cambia de significado por estatus fue evaluada y descartada — su semántica es invariante (R19); Tabla 1 la excluye por decisión de esquema, no por vaciamiento semántico (R21); Tabla 3 la consume sin transformación (R20); validación activa ante nulo/malformado homologada a R2 (R22). ~~Pendiente, ligado a #6: el mecanismo de derivación de fecha en Tabla 2 bajo el grano corregido de R4.~~ Resuelto en #6 (S9): R4-T2 fija el grano de Tabla 2 con fecha.
  
-**D. Frontera arquitectónica.** Tensión entre "migrar todo a GCP+Polars" y "consumir vía PQ/Sheets". Avance parcial S11 (5.7): outputs aterrizan en BigQuery (D-10.1); PQ extrae tablas procesadas, no crudos, y es transitorio (D-10.2); split Polars/BigQuery vía Opción C (D-10.3). ~~el mecanismo que resuelve "versión vigente" fuera de M~~ — resuelto para archivos PR en #11 (R23–R26, S11). ~~entorno de ejecución de Polars (#14), que bloquea la decisión de entrada~~ — resuelto en #14 (S12, 5.8): Cloud Run Jobs, disparo programado vía Cloud Scheduler, perfil de carga validado, autenticación directa a Shared Drive (D-14.1–D-14.4). Como consecuencia, la bifurcación de ubicación de fuentes de entrada (Drive vs GCS) queda resuelta a favor de Drive (D-14.4). ~~(d) interfaz concreta de CÓMPUTO contra el landing point~~ — cerrado en S13: corrección de alcance, PR define solo su contrato de frontera de consumo propio (R27, §5.9, atomicidad D-14.5), el mecanismo interno de CÓMPUTO queda fuera de alcance. Sin definir aún dentro de #10: (c) mecanismo técnico de conexión Sheets; motor del artefacto residual de R11.
+~~**D. Frontera arquitectónica.** Tensión entre "migrar todo a GCP+Polars" y "consumir vía PQ/Sheets". Avance parcial S11 (5.7): outputs aterrizan en BigQuery (D-10.1); PQ extrae tablas procesadas, no crudos, y es transitorio (D-10.2); split Polars/BigQuery vía Opción C (D-10.3). El mecanismo que resuelve "versión vigente" fuera de M — resuelto para archivos PR en #11 (R23–R26, S11). Entorno de ejecución de Polars (#14), que bloqueaba la decisión de entrada — resuelto en #14 (S12, 5.8): Cloud Run Jobs, disparo programado vía Cloud Scheduler, perfil de carga validado, autenticación directa a Shared Drive (D-14.1–D-14.4). Bifurcación de fuentes de entrada (Drive vs GCS) resuelta a favor de Drive (D-14.4). Sub-item (d), interfaz concreta de CÓMPUTO contra el landing point — cerrado en S13: corrección de alcance, PR define solo su contrato de frontera de consumo propio (R27, §5.9, atomicidad D-14.5). Sub-item (c), mecanismo técnico de conexión Sheets, y motor del artefacto residual de R11 — cerrados en S14.~~
+> Cerrado en S14: #10 resuelto en su totalidad. Frontera de salida
+> (BigQuery + Opción C, D-10.1/2/3), fuente de entrada (Drive, D-14.4),
+> entorno de ejecución (Cloud Run Job, D-14.1–D-14.5), señal de frescura
+> (R27, §5.9), atomicidad de consumo (§5.7), mecanismo de conexión
+> Sheets/PQ + partición de datasets staging/serving (R28/R29, §5.10,
+> D-10.4), y motor + destino del artefacto residual de R11 (R30, §5.10) —
+> todos resueltos. Sin items abiertos restantes en esta grieta.
 
 **G. Resolución de vigencia — Tabla Mapeo de Tipologías.** El mecanismo de R23–R26 resuelve vigencia exclusivamente para archivos PR (hoja de programas vigentes, §3). La Tabla Mapeo de Tipologías se declara en §3 como "un archivo por obra", sin estructura de carpeta ni mecanismo de versionado definidos. Pendiente: ¿existe versionado real (carpetas por fecha, análogas a R23) o es un archivo verdaderamente único y estático por obra, sin ambigüedad de "vigente"? Si hay versionado, ubicación de carpeta y patrón de nombre no declarados. [G] #13.
  
@@ -607,11 +707,17 @@ ENTONCES el sistema DEBE estampar en cada fila de ambas tablas una columna
 Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIENTE crítico abierto.
  
 - **Bloque 0 — Contrato de consumo y posición en grafo** ← **CERRADO (S10)**. Resolvió E.
+
 - **Bloque 1 — Objetivo + Requerimientos** (archivo) ← **DESBLOQUEADO (S10)**, no iniciado. Objetivo casi listo; requerimientos dependían de B0, ya cerrado.
+
 - **Bloque 2 — Domain** (archivo) ← **CERRADO (S9)**. Resolvió A, B, C, F.
-- **Bloque 3 — Arquitectura + Stack** (archivo) ← **EN CURSO**. #11 cerrado (S11, R23–R26). #14 cerrado (S12, 5.8). #10 avanzado parcialmente (S11, 5.7; S12 resuelve la fuente de entrada vía D-14.4; S13 cierra el sub-item (d) vía R27/§5.9 + atomicidad D-14.5); resta (c) Sheets y motor del artefacto R11. Resuelve D (#10, restante) y G (#13).
+
+- **Bloque 3 — Arquitectura + Stack** (archivo) ← **EN CURSO**. #11 cerrado (S11, R23–R26). #14 cerrado (S12, 5.8). #10 cerrado en su totalidad (S11, 5.7; S12, D-14.4; S13, R27/§5.9; S14, R28–R30/§5.10 + D-10.4). Resuelve D en su totalidad. Resta únicamente #13 (G) para cerrar Bloque 3.
+
 - **Bloque 4 — Roadmap por fases** (archivo). Depende de B2 + B3. Checkpoints críticos candidatos: integridad de llaves con join sin pérdida; resolución determinista de versión vigente.
+
 - **Bloque 5 — Development Fase 1** (archivo). Depende de B4.
+
 - **Bloque 6 — CLAUDE.md** (condicional). Solo si arquitectura sin Colab y contrato de PR exigen cambios de gobernanza.
 ---
  
@@ -818,6 +924,34 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   lectura sin mezcla parcial entre snapshots para T1/T2/T3; no requiere
   regla ni artefacto adicional. [D] (§5.7, S13)
 
+- Cierre de #10, sub-item (c) — mecanismo de conexión: modo pull
+  exclusivo, Connected Sheets para T3, Power Query para T1/T2, sin
+  componente intermedio que materialice o escriba datos, refresh manual
+  por el analista, autenticación bajo identidad individual de Google. No
+  modifica D-14.5. [D] (§5.10, R28, S14)
+
+- Cierre de #10, sub-item (c) — partición de datasets: stg_matched y
+  recon_nomatch en dataset de staging oculto; T1, T2 y T3 como vistas
+  autorizadas en dataset de servicio separado. Rol IAM de analistas
+  otorgado exclusivamente sobre el dataset de servicio, nunca sobre el de
+  staging. Enmienda: retirada la restricción de exclusión de T1/T2 para
+  analistas — leen T1, T2 (PQ) y T3 (Connected Sheets) bajo identidad
+  individual. Visibilidad cross-obra en T1/T2 aceptada, no bloqueante;
+  filtrado por obra diferido al dashboard/CÓMPUTO. [D] (§5.10, R29, S14;
+  D-10.4 en §5.7)
+
+- Destino fino de recon_nomatch (amendment a R8, S14): dataset de
+  staging oculto, sin acceso de analistas; distribución exclusiva del
+  dueño del sistema, gestionada manualmente. [A/B] (R8 enmendada S14)
+
+- Cierre del motor y destino del artefacto residual de R11: vista de
+  BigQuery, simétrica a T1/T2, complementaria a R9∪R10, declarada dentro
+  del dataset de staging oculto (no en el de servicio) para no heredar el
+  grant IAM de analistas del dataset de servicio. Distribución exclusiva
+  del dueño del sistema, en simetría con recon_nomatch. No modifica
+  D-10.3: el motor de R9/R10 permanece en BigQuery. Con esta regla, #10
+  cierra en su totalidad. [D] (§5.10, R30, S14)
+
 
 ### PARCIALMENTE DEFINIDO
 - Canonicalización de `""` vs `null` en ESTATUS C.CLOUD. Ambos valores ya
@@ -828,13 +962,16 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   distintos — relevante específicamente para el campo estatus de la tabla
   3 (R12), que al consumir el valor crudo sí distingue entre ambos.
 
-- Frontera GCP+Polars ↔ PQ/Sheets (#10): salida resuelta (BigQuery + Opción C, 5.7); fuente de entrada resuelta (Drive, vía D-14.4, S12); sub-item (d) cerrado (S13, R27 + atomicidad D-14.5). Abierto: (c) mecanismo de conexión Sheets; motor del artefacto residual de R11. [D] (Bloque 3)
+~~- Frontera GCP+Polars ↔ PQ/Sheets (#10): salida resuelta (BigQuery + Opción C); fuente de entrada resuelta (Drive, D-14.4); sub-item (d) cerrado (R27 + atomicidad). Abierto: (c) mecanismo de conexión Sheets; motor del artefacto residual de R11. [D] (Bloque 3)~~
+> Cerrado en S14. Ver DEFINIDO — R28–R30, §5.10, D-10.4 en §5.7.
 
 ### PENDIENTE (crítico — bloquea generación de archivos)
 ~~6. [CERRADO EN S9 — ver Sección 5.5, R4-T1, R4-T2, R8 enmendada]~~
-10. Frontera GCP+Polars ↔ PQ/Sheets — AVANCE PARCIAL S11/S12/S13 (5.7, 5.9). Salida resuelta (BigQuery, Opción C); fuente de entrada resuelta (Drive, D-14.4, S12); sub-item (d) cerrado (S13: contrato de frontera de consumo propio de PR — R27 + atomicidad D-14.5). Resta únicamente: (c) mecanismo de conexión Sheets, motor del artefacto residual de R11. [D] (Bloque 3)
-~~11. Mecanismo de resolución de "versión vigente" para archivos PR. [D] (Bloque 3)~~
-> Cerrado en S11. Ver Sección 5.6, R23–R26.
+
+~~- **#10** — Frontera GCP+Polars ↔ PQ/Sheets. Avance parcial S11/S12/S13. Resta únicamente: (c) mecanismo de conexión Sheets, motor del artefacto residual de R11. [D] (Bloque 3)~~
+> Cerrado en S14. Ver §5.10, R28–R30; D-10.4 en §5.7.
+- **#13** — Estructura de carpeta y resolución de "vigente" para la Tabla Mapeo de Tipologías; análogo a #11, sin estructura declarada. [G] (Bloque 3)
+
 13. Estructura de carpeta y mecanismo de resolución de "vigente" para la Tabla Mapeo de Tipologías — análogo a #11, sin estructura de carpeta declarada aún. [G] (Bloque 3)
 ~~14. Entorno de ejecución del pipeline Polars de PR [...]. [D] (Bloque 3)~~
 > Cerrado en S12. Ver Sección 5.8, D-14.1–D-14.5.14. Entorno de ejecución del pipeline Polars de PR (Cloud Run / Function / GCE / Dataflow / otro) — no declarado. Bloquea la decisión de fuente de entrada (Drive vs GCS) y la mecánica de escritura a BigQuery. Surgido en S11 al descartar el supuesto erróneo de Colab (Colab pertenece a MIDAS, no a PR). [D] (Bloque 3)
@@ -873,3 +1010,5 @@ Corrección dentro de S10: las filas NO_MATCH se excluyen también de la Tabla 3
 **S11 — 2026-06-19**: Bloque 3. Cierre de #11: mecanismo de resolución de versión vigente para archivos PR (R23–R26). Recorrido recursivo bajo ruta_archivo; carpetas con patrón <PREFIJO>_SEM_<AAAAMMDD>; fecha extraída del nombre de carpeta (nunca mtime, rechazado por inconsistencia bajo sync de Drive); match exacto de nombre_programa sensible a mayúsculas/espacios (homologado R18); selección por fecha máxima. Carpetas no conformes ignoradas sin abortar (R24). Cero coincidencias o empate en fecha máxima → abort multiobra completo (R25, R26), homologado a R16/R18. Cardinalidad de la hoja de programas vigentes corregida: una fila por (obra, macro_partida), macro_partida embebida en nombre_programa. Avance parcial de #10: frontera de salida resuelta — 3 tablas a BigQuery, PQ transitorio (Modelo 2) extrae vistas procesadas, split de motor Opción C (Polars dueño de reglas de fila hasta R8 + staging; BigQuery dueño de R4/R9/R10 + vistas de servicio); descartadas Opción A (dispersa no-lossy) y B (BigQuery pasivo, sin learning) (5.7, D-10.1/2/3). Restan en #10: (c) mecanismo Sheets, (d) interfaz CÓMPUTO, fuente de entrada Drive/GCS, motor del artefacto R11. Apertura de #13 (vigencia de Tabla Mapeo, análogo a #11, sin estructura declarada). Apertura de #14 (entorno de ejecución de Polars en PR — corregido supuesto erróneo de Colab, que pertenece a MIDAS). Próximo foco: #14 (entorno de ejecución, gatea fuente de entrada) o resto de #10, a decisión de Alberto.
 
 **S13 — 2026-06-20**: Bloque 3. Foco: #10, cierre del sub-item (d). Corrección de alcance: el ítem original ("interfaz concreta de CÓMPUTO contra BigQuery") se reemplaza por un contrato de frontera de consumo propio de PR, no la especificación interna de CÓMPUTO — esquema estable (§4) + señal de frescura + atomicidad. Decisiones: (1) nueva regla R27 (§5.9, nueva subsección — Contrato de Trazabilidad de Snapshot): run_date:Date estampado en stg_matched y recon_nomatch al momento de la escritura del Job, un único valor por corrida (la fecha de ejecución del Cloud Run Job, no la fecha de vigencia por obra de R23–R26, que puede diferir entre obras), heredado por passthrough en las vistas T1/T2/T3, incluido como miembro del GROUP BY en R4-T1/R4-T2 sin fragmentar el grano (constante por snapshot), distinto de fecha (dato de negocio R19–R22); granularidad Date, no Timestamp, suficiente dado que D-14.5 garantiza escritura solo tras corrida completa y exitosa. (2) Atomicidad de consumo: confirmado que D-14.5 (WRITE_TRUNCATE único, diferido) es garantía suficiente para lectura sin mezcla parcial entre snapshots en T1/T2/T3; no se agrega regla nueva, solo nota de cierre en §5.7. Esquemas de Tabla 1, Tabla 2 y Tabla 3 (§4, R15) enmendados para incluir run_date. Auditoría de proceso: se identificó staleness en el párrafo "Estado" de §5.7 (aún mencionaba Drive/GCS y #14 como abiertos, ya resueltos en S12) — corregido en esta sesión como limpieza, no como decisión nueva. #10 queda reducido a: (c) mecanismo de conexión Sheets, motor del artefacto residual de R11. Próximo foco candidato: (c) o motor de R11, a decisión de Alberto.
+
+**S14 — 2026-06-20**: Bloque 3. Foco: cierre total de #10 (ambos sub-items restantes). Nueva subsección §5.10 (Contrato de Consumo Externo — Sheets / Power Query / Aislamiento de Datasets). Decisiones: (1) R28 — mecanismo de conexión: modo pull exclusivo, sin componente intermedio que materialice o escriba datos (Connected Sheets para T3, Power Query para T1/T2), refresh manual por el analista, autenticación bajo identidad individual de Google; no modifica D-14.5. (2) R29 — partición de datasets: stg_matched y recon_nomatch en un dataset de staging oculto; T1, T2 y T3 como vistas autorizadas en un dataset de servicio separado; rol IAM de analista otorgado exclusivamente sobre el dataset de servicio — registrado también como D-10.4 en §5.7. Enmienda: se retira la restricción provisional "los analistas nunca acceden a T1/T2" (introducida y descartada dentro de la misma sesión, al detectarse contradicción con el flujo real de Power Query/Excel por-obra que alimenta a CÓMPUTO). Racional de Alberto: simplicidad operativa, datos no sensibles; consecuencia aceptada — visibilidad cross-obra en T1/T2, filtrado por obra diferido al dashboard/CÓMPUTO. (3) Amendment a R8: destino fino de recon_nomatch — dataset de staging oculto, distribución exclusiva del dueño del sistema. (4) R30 — motor y destino del artefacto residual de R11: vista de BigQuery simétrica a T1/T2, complementaria a R9∪R10, declarada dentro del dataset de staging (no en el de servicio) para no heredar el grant IAM de analistas; distribución exclusiva del dueño del sistema, en simetría con recon_nomatch; no modifica D-10.3, el motor de R9/R10 permanece en BigQuery. Auditoría de proceso: se identificó y corrigió una contradicción textual en D-10.3 (§5.7), que listaba a R11 como regla "consolidada en Polars" — corrección de redacción, no de decisión: el motor de evaluación de membresía R9/R10 fue y sigue siendo de BigQuery; solo el artefacto resultante (la vista residual) se ubica en el dataset de staging por razones de aislamiento de acceso, no porque Polars lo procese. #10 cierra en su totalidad. Único PENDIENTE crítico restante en Bloque 3: #13. Próximo foco: #13 (estructura de carpeta y resolución de "vigente" para la Tabla Mapeo de Tipologías) — cierra Bloque 3 si se resuelve.
