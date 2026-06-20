@@ -2,10 +2,10 @@
 
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
 
-**Versión:** S11 → S12, fecha 2026-06-20.
-**Sesión de origen:** Bloque 3 (Arquitectura + Stack) — cierre de #14 (entorno de ejecución de Polars en PR: Cloud Run Jobs, disparo programado, perfil de ejecución validado, autenticación a Drive, mecánica de escritura a BigQuery); resuelve dentro de #10 la bifurcación de fuente de entrada (Drive, no GCS).
+**Versión:** S12 → S13, fecha 2026-06-20.
+**Sesión de origen:** Bloque 3 (Arquitectura + Stack) — cierre parcial de #10: sub-item (d) resuelto mediante corrección de alcance — PR define su propio contrato de frontera de consumo (esquema + señal de frescura + atomicidad), el mecanismo de lectura interno de CÓMPUTO queda explícitamente fuera de alcance. Cierra la señal de frescura (R27, nueva §5.9) y confirma la atomicidad de D-14.5 como suficiente. Restan en #10: (c) mecanismo de conexión Sheets, motor del artefacto residual de R11.
 **Módulo en foco:** PR — scope-lock activo (un solo módulo hasta PENDIENTE crítico vacío)
-**Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada S9/S10), R9–R10, R11 (enmendada S10), R12–R22, R23–R26 (S11, cierre #11), R6.1 borde. R4 retirada en S9. R15 enmendada en S10: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]. EN DISPUTA vacío desde S10.
+**Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada S9/S10), R9–R10, R11 (enmendada S10), R12–R22, R23–R26 (S11, cierre #11), R27 (S13, nueva, §5.9, cierre parcial #10), R6.1 borde. R4 retirada en S9. R15 enmendada en S10: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]; enmendada nuevamente en S13 (R27): se agrega run_date. EN DISPUTA vacío desde S10.
 **Test de verificabilidad (Definition of Done):** una regla está DEFINIDA si y solo si se expresa como
 `DADO [precondición] CUANDO [evento] ENTONCES el sistema DEBE [resultado observable]`, sin huecos.
 Si no, va a PENDIENTE. No se juzga ambigüedad por intuición; se aplica este test.
@@ -47,9 +47,11 @@ Semántica de niveles declarada: N1 frente de trabajo · N2 edificio/torre · N3
 
 ## 4. SALIDA OBJETIVO (DECLARADA, parcialmente indefinida)
 
-1. **Append PR Finalizado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R9 (criterio completo: 5.2/R9; ya no se reduce a la literal única "FINALIZADA"). Esquema declarado: `[obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64, count_unidades:UInt32]`. id_tipologia no nulo por construcción: las filas NO_MATCH son excluidas del output final antes de la agregación (R8 enmendada, R4-T1). Excluye el campo fecha por decisión de esquema, no por vaciamiento semántico (R21).
-2. **Append PR Programado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R10 (criterio completo: 5.2/R10). Esquema declarado: `[obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64, fecha:Date, count_unidades:UInt32]`. id_tipologia no nulo por construcción: las filas NO_MATCH son excluidas del output final antes de la agregación (R8 enmendada, R4-T2). Semántica de `fecha` fijada por R19; validación ante nulo/malformado por R22. La distribución de count_unidades por fecha es el resultado correcto e intencional (R4-T2): no se colapsa.
-3. **Reporte desnormalizado (humano)** — unión de ambos estados, desnormalizada. Esquema declarado (enmendado S10): `[obra:Utf8, estatus:Utf8, nombre_actividad:Utf8, tipologia:Utf8, fecha:Date]`. La columna usar se excluye: toda fila sobreviviente al gate de R14 tiene USAR=="SI" por construcción (R15). Los campos nivel_1..5 y macropartida se excluyen: el consumidor humano no requiere detalle de ubicación ni tipo de actividad (R15 enmendada, S10).
+1. **Append PR Finalizado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R9 (criterio completo: 5.2/R9; ya no se reduce a la literal única "FINALIZADA"). Esquema declarado: `[obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64, count_unidades:UInt32, run_date:Date] (R27, S13: señal de frescura de snapshot)`. id_tipologia no nulo por construcción: las filas NO_MATCH son excluidas del output final antes de la agregación (R8 enmendada, R4-T1). Excluye el campo fecha por decisión de esquema, no por vaciamiento semántico (R21).
+
+2. **Append PR Programado** — PR vigentes cuyo `ESTATUS_C_CLOUD_norm` cae dentro del conjunto declarado en R10 (criterio completo: 5.2/R10). Esquema declarado: `[obra:Utf8, id_actividad:UInt64, id_tipologia:UInt64, fecha:Date, count_unidades:UInt32, run_date:Date] (R27, S13; no confundir con fecha, dato de negocio R19–R22)`. id_tipologia no nulo por construcción: las filas NO_MATCH son excluidas del output final antes de la agregación (R8 enmendada, R4-T2). Semántica de `fecha` fijada por R19; validación ante nulo/malformado por R22. La distribución de count_unidades por fecha es el resultado correcto e intencional (R4-T2): no se colapsa.
+
+3. **Reporte desnormalizado (humano)** — unión de ambos estados, desnormalizada. Esquema declarado (enmendado S10, enmendado nuevamente S13): `[obra:Utf8, estatus:Utf8, nombre_actividad:Utf8, tipologia:Utf8, fecha:Date, run_date:Date] (R27: señal de frescura; coexiste con fecha sin relación entre ambas)`. La columna usar se excluye: toda fila sobreviviente al gate de R14 tiene USAR=="SI" por construcción (R15). Los campos nivel_1..5 y macropartida se excluyen: el consumidor humano no requiere detalle de ubicación ni tipo de actividad (R15 enmendada, S10).
 Declaraciones de fuente por campo: `obra` — derivada vía R3 (substring antes del primer "_" en nombre_programa); `estatus` — valor crudo de ESTATUS C.CLOUD, sin transformación (R12); `nombre_actividad` — columna cruda ACTIVIDAD del archivo PR; `tipologia` — columna cruda Tipologia del archivo de mapeo, pre-normalización, disponible tras el join R7; no nulo por construcción: las filas NO_MATCH son excluidas de la Tabla 3 antes del armado (R8 enmendada S10); `fecha` — columna cruda FECHA del archivo PR, sin transformación (R20).
 La tabla 3 conserva, sin excepciones, el contrato de consumir valores crudos (5.1, R12). Membresía de la Tabla 3: solo filas MATCHED (R8 enmendada S10) y solo filas ruteadas a Finalizado o Programado (R9/R10); las residuales de estatus no reconocido (R11 enmendada S10) quedan excluidas, en simetría con las NO_MATCH.
 
@@ -75,6 +77,9 @@ R14 [cierra #5, gating] DADO una fila de PR cuyo valor crudo de USAR es distinto
    no-lossy del sistema, de signo opuesto a R8/R11: riesgo aceptado de
    pérdida silenciosa de filas válidas ante variación de casing o
    espacios, bajo el supuesto declarado de dominio cerrado {SI, NO}.
+   Nota S13 (R27, §5.9): run_date (señal de frescura operacional, distinta de
+   fecha) se incluye como miembro adicional del GROUP BY; al ser constante
+   dentro de cualquier snapshot, su inclusión no fragmenta este grano.
 
 R15 [cierra #5, esquema Tabla 3; enmendada S10] DADO que toda fila sobreviviente a R14
    tiene USAR=="SI" por construcción
@@ -84,9 +89,11 @@ R15 [cierra #5, esquema Tabla 3; enmendada S10] DADO que toda fila sobreviviente
    ubicación ni tipo de actividad), e incluir tipologia como el valor crudo de la
    columna Tipologia del archivo de mapeo, pre-normalización, disponible tras el join R7.
    tipologia es no nulo por construcción: solo filas MATCHED integran la Tabla 3 (ver R8 enmendada S10).
-   Esquema vigente (enmendado S10):
-   [obra:Utf8, estatus:Utf8, nombre_actividad:Utf8, tipologia:Utf8, fecha:Date].
-   ESTATUS C.CLOUD permanece en Tabla 3 como campo estatus vía R12.
+   Esquema vigente (enmendado S10, enmendado S13):
+   [obra:Utf8, estatus:Utf8, nombre_actividad:Utf8, tipologia:Utf8, fecha:Date, run_date:Date].
+   ESTATUS C.CLOUD permanece en Tabla 3 como campo estatus vía R12. run_date es señal de
+   frescura operacional (R27, §5.9), distinta de fecha (dato de negocio, R19–R22); ambas
+   coexisten sin relación entre sí.
 
 R1 [cierra #1] DADO una fila de PR con ACTIVIDAD no nula
    CUANDO se construye su identidad
@@ -408,11 +415,11 @@ R26 [cierra #11, borde: empate] DADO que el recorrido produce más de un
 ### 5.7 Contrato de Frontera de Salida — Staging Polars / BigQuery [avance parcial de #10]
 
 Estado: PARCIALMENTE DEFINIDO. Resuelta la frontera de salida y el split
-de motor (Opción C). Pendientes dentro de #10: mecanismo de conexión
-Sheets (c), confirmación de interfaz de CÓMPUTO (d), ubicación de fuentes
-de entrada (Drive vs GCS), y entorno de ejecución de Polars (#14, bloquea
-la decisión de entrada). No es regla DADO/CUANDO/ENTONCES todavía: es
-decisión de arquitectura registrada, no contrato testeable cerrado.
+de motor (Opción C, S11); resuelta la fuente de entrada (Drive, D-14.4,
+S12); resuelto el entorno de ejecución (#14, 5.8, S12); cerrado el
+sub-item (d) (R27/§5.9 + atomicidad D-14.5, S13). Pendiente dentro de
+#10: mecanismo de conexión Sheets (c), motor del artefacto residual de
+R11.
 
 Decisiones tomadas (S11):
 
@@ -458,6 +465,19 @@ BigQuery — y por tanto su motor NO está resuelto por esta decisión. Su
 esquema y destino siguen diferidos a Bloque 3 (consistente con R8/R11
 originales); la asignación de motor del artefacto R11 queda explícitamente
 abierta, no cerrada por defecto.
+
+Nota S13 (R27, §5.9): stg_matched y recon_nomatch incluyen además
+run_date:Date, estampado por el Job al momento de la escritura (D-14.5);
+las vistas T1, T2 y T3 heredan esta columna por passthrough.
+
+Nota de cierre S13 — atomicidad de consumo (cierra parcialmente #10,
+sub-item (d)): confirmado que la atomicidad de D-14.5 (escritura única
+WRITE_TRUNCATE, diferida hasta corrida exitosa sin abort) es garantía de
+consumo suficiente para T1/T2/T3. Un consumidor que lea durante la
+ventana de escritura observará o el snapshot completo de la semana
+anterior, o el snapshot completo de la semana actual — nunca una mezcla
+parcial. No se requiere regla ni artefacto adicional; D-14.5 ya cubre
+esta garantía en su forma actual.
 
 ### 5.8 Contrato de Entorno de Ejecución — Polars en PR [cierra #14]
 
@@ -527,6 +547,41 @@ D-14.5 [mecánica de escritura a BigQuery — disposición y atomicidad] Cada
    explícitamente y la aceptó sin solicitar cambios a R16–R18/R25–R26.
 
 
+### 5.9 Contrato de Trazabilidad de Snapshot — run_date [cierra parcialmente #10, sub-item (d)]
+
+Estado: DEFINIDO. Resuelve la señal de frescura que un consumidor de
+T1/T2/T3 necesita para saber qué corrida semanal produjo el snapshot
+que está leyendo. Distinto de la semántica de negocio de fecha (R19–R22):
+run_date es metadato operacional del Job, no dato de la actividad.
+
+R27 [cierra parcialmente #10, sub-item (d) — señal de frescura]
+DADO que stg_matched y recon_nomatch son las tablas físicas escritas por el
+   Job de Polars en cada corrida semanal (D-14.5)
+CUANDO el Job ejecuta la escritura WRITE_TRUNCATE de una corrida completa y
+   exitosa (sin abort en ningún gate — R16, R18, R25, R26)
+ENTONCES el sistema DEBE estampar en cada fila de ambas tablas una columna
+   run_date:Date, cuyo valor es la fecha de ejecución del Job para esa
+   corrida — un único valor, idéntico en cada fila de stg_matched y de
+   recon_nomatch para ese snapshot, independiente de la fecha de vigencia
+   resuelta por obra en R23–R26 (que puede diferir entre obras y no
+   participa en esta columna).
+   Las vistas T1, T2 y T3 en BigQuery DEBEN heredar run_date mediante
+   passthrough directo desde stg_matched, sin transformación.
+   En las agregaciones de R4-T1 y R4-T2, run_date DEBE incluirse como
+   miembro adicional del GROUP BY; dado que su valor es constante dentro
+   de cualquier snapshot, su inclusión no fragmenta el grano declarado
+   (obra_norm, id_actividad, id_tipologia[, fecha]).
+   Distinción terminológica obligatoria: run_date (metadato operacional,
+   constante por snapshot, "cuándo corrió el Job") es una columna distinta
+   de fecha (dato de negocio, R19–R22, varía por fila en Tabla 2 y Tabla 3).
+   Ambas columnas Date coexisten en Tabla 2 y Tabla 3 sin relación entre
+   sí; no deben confundirse en ningún consumo posterior.
+   Granularidad: Date, no Timestamp — D-14.5 garantiza que una escritura
+   solo ocurre tras una corrida completa y exitosa; no existe escenario de
+   colisión intra-día entre un intento fallido y uno exitoso, porque el
+   fallido nunca alcanza BigQuery.
+
+
 ## 6. AUDITORÍA — GRIETAS ABIERTAS
 
 "AUDITORÍA es descriptiva; el LEDGER (§8) es autoritativo para estado" 
@@ -537,7 +592,7 @@ D-14.5 [mecánica de escritura a BigQuery — disposición y atomicidad] Cada
  
 **C. Agregación.** ~~"Unidad" no definida; nivel de agrupación del count no declarado — ver #6.~~ Resuelto en #6 (S9): "unidad" definida y grano fijado (R4-T1, R4-T2, §5.5). ~~`FECHA` cambia de significado según estatus (Programado conserva fecha, Finalizado la descarta) sin regla declarada.~~ Resuelto en #7: la hipótesis de que FECHA cambia de significado por estatus fue evaluada y descartada — su semántica es invariante (R19); Tabla 1 la excluye por decisión de esquema, no por vaciamiento semántico (R21); Tabla 3 la consume sin transformación (R20); validación activa ante nulo/malformado homologada a R2 (R22). ~~Pendiente, ligado a #6: el mecanismo de derivación de fecha en Tabla 2 bajo el grano corregido de R4.~~ Resuelto en #6 (S9): R4-T2 fija el grano de Tabla 2 con fecha.
  
-**D. Frontera arquitectónica.** Tensión entre "migrar todo a GCP+Polars" y "consumir vía PQ/Sheets". Avance parcial S11 (5.7): outputs aterrizan en BigQuery (D-10.1); PQ extrae tablas procesadas, no crudos, y es transitorio (D-10.2); split Polars/BigQuery vía Opción C (D-10.3). ~~el mecanismo que resuelve "versión vigente" fuera de M~~ — resuelto para archivos PR en #11 (R23–R26, S11). ~~entorno de ejecución de Polars (#14), que bloquea la decisión de entrada~~ — resuelto en #14 (S12, 5.8): Cloud Run Jobs, disparo programado vía Cloud Scheduler, perfil de carga validado, autenticación directa a Shared Drive (D-14.1–D-14.4). Como consecuencia, la bifurcación de ubicación de fuentes de entrada (Drive vs GCS) queda resuelta a favor de Drive (D-14.4). Sin definir aún dentro de #10: (c) mecanismo técnico de conexión Sheets; (d) interfaz concreta de CÓMPUTO contra el landing point; motor del artefacto residual de R11.x
+**D. Frontera arquitectónica.** Tensión entre "migrar todo a GCP+Polars" y "consumir vía PQ/Sheets". Avance parcial S11 (5.7): outputs aterrizan en BigQuery (D-10.1); PQ extrae tablas procesadas, no crudos, y es transitorio (D-10.2); split Polars/BigQuery vía Opción C (D-10.3). ~~el mecanismo que resuelve "versión vigente" fuera de M~~ — resuelto para archivos PR en #11 (R23–R26, S11). ~~entorno de ejecución de Polars (#14), que bloquea la decisión de entrada~~ — resuelto en #14 (S12, 5.8): Cloud Run Jobs, disparo programado vía Cloud Scheduler, perfil de carga validado, autenticación directa a Shared Drive (D-14.1–D-14.4). Como consecuencia, la bifurcación de ubicación de fuentes de entrada (Drive vs GCS) queda resuelta a favor de Drive (D-14.4). ~~(d) interfaz concreta de CÓMPUTO contra el landing point~~ — cerrado en S13: corrección de alcance, PR define solo su contrato de frontera de consumo propio (R27, §5.9, atomicidad D-14.5), el mecanismo interno de CÓMPUTO queda fuera de alcance. Sin definir aún dentro de #10: (c) mecanismo técnico de conexión Sheets; motor del artefacto residual de R11.
 
 **G. Resolución de vigencia — Tabla Mapeo de Tipologías.** El mecanismo de R23–R26 resuelve vigencia exclusivamente para archivos PR (hoja de programas vigentes, §3). La Tabla Mapeo de Tipologías se declara en §3 como "un archivo por obra", sin estructura de carpeta ni mecanismo de versionado definidos. Pendiente: ¿existe versionado real (carpetas por fecha, análogas a R23) o es un archivo verdaderamente único y estático por obra, sin ambigüedad de "vigente"? Si hay versionado, ubicación de carpeta y patrón de nombre no declarados. [G] #13.
  
@@ -554,7 +609,7 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 - **Bloque 0 — Contrato de consumo y posición en grafo** ← **CERRADO (S10)**. Resolvió E.
 - **Bloque 1 — Objetivo + Requerimientos** (archivo) ← **DESBLOQUEADO (S10)**, no iniciado. Objetivo casi listo; requerimientos dependían de B0, ya cerrado.
 - **Bloque 2 — Domain** (archivo) ← **CERRADO (S9)**. Resolvió A, B, C, F.
-- **Bloque 3 — Arquitectura + Stack** (archivo) ← **EN CURSO**. #11 cerrado (S11, R23–R26). #14 cerrado (S12, 5.8). #10 avanzado parcialmente (S11, 5.7; S12 resuelve la fuente de entrada vía D-14.4); restan (c) Sheets, (d) interfaz CÓMPUTO, motor del artefacto R11. Resuelve D (#10, restante) y G (#13).
+- **Bloque 3 — Arquitectura + Stack** (archivo) ← **EN CURSO**. #11 cerrado (S11, R23–R26). #14 cerrado (S12, 5.8). #10 avanzado parcialmente (S11, 5.7; S12 resuelve la fuente de entrada vía D-14.4; S13 cierra el sub-item (d) vía R27/§5.9 + atomicidad D-14.5); resta (c) Sheets y motor del artefacto R11. Resuelve D (#10, restante) y G (#13).
 - **Bloque 4 — Roadmap por fases** (archivo). Depende de B2 + B3. Checkpoints críticos candidatos: integridad de llaves con join sin pérdida; resolución determinista de versión vigente.
 - **Bloque 5 — Development Fase 1** (archivo). Depende de B4.
 - **Bloque 6 — CLAUDE.md** (condicional). Solo si arquitectura sin Colab y contrato de PR exigen cambios de gobernanza.
@@ -740,6 +795,29 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   falla estructural en una sola obra congela el refresco de las 6–7 obras
   esa semana, no solo el de la obra defectuosa. [D] (5.8, D-14.1–D-14.5)
 
+- Cierre parcial de #10, sub-item (d): el alcance original ("interfaz
+  concreta de CÓMPUTO contra BigQuery") se corrige a un contrato de
+  frontera de consumo propio de PR — esquema estable (§4) + señal de
+  frescura (R27, §5.9) + atomicidad (D-14.5, confirmada suficiente sin
+  regla adicional). El mecanismo de lectura interno de CÓMPUTO (sustrato,
+  PQ hoy, GCP-nativo en el objetivo) queda explícitamente fuera de
+  alcance de PR, diferido a la especificación futura de CÓMPUTO. [D] (S13)
+
+- Señal de frescura de snapshot: run_date:Date, estampada en stg_matched
+  y recon_nomatch al momento de la escritura del Job (un único valor por
+  corrida — la fecha de ejecución del Cloud Run Job, no la fecha de
+  vigencia por obra de R23–R26); heredada por passthrough en las vistas
+  T1, T2 y T3; incluida como miembro del GROUP BY en R4-T1/R4-T2 sin
+  fragmentar el grano (constante por snapshot); distinta de fecha (dato
+  de negocio, R19–R22). Granularidad Date, no Timestamp, suficiente dado
+  que D-14.5 garantiza escritura solo tras corrida completa y exitosa.
+  [D] (§5.9, R27, S13)
+
+- Atomicidad de consumo confirmada suficiente: D-14.5 (WRITE_TRUNCATE
+  único, diferido hasta corrida exitosa sin abort) cubre la garantía de
+  lectura sin mezcla parcial entre snapshots para T1/T2/T3; no requiere
+  regla ni artefacto adicional. [D] (§5.7, S13)
+
 
 ### PARCIALMENTE DEFINIDO
 - Canonicalización de `""` vs `null` en ESTATUS C.CLOUD. Ambos valores ya
@@ -750,11 +828,11 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   distintos — relevante específicamente para el campo estatus de la tabla
   3 (R12), que al consumir el valor crudo sí distingue entre ambos.
 
-- Frontera GCP+Polars ↔ PQ/Sheets (#10): salida resuelta (BigQuery + Opción C, 5.7); fuente de entrada resuelta (Drive, vía D-14.4, S12). Abierto: (c) mecanismo de conexión Sheets; (d) interfaz concreta de CÓMPUTO contra BigQuery; motor del artefacto residual de R11. [D] (Bloque 3)
+- Frontera GCP+Polars ↔ PQ/Sheets (#10): salida resuelta (BigQuery + Opción C, 5.7); fuente de entrada resuelta (Drive, vía D-14.4, S12); sub-item (d) cerrado (S13, R27 + atomicidad D-14.5). Abierto: (c) mecanismo de conexión Sheets; motor del artefacto residual de R11. [D] (Bloque 3)
 
 ### PENDIENTE (crítico — bloquea generación de archivos)
 ~~6. [CERRADO EN S9 — ver Sección 5.5, R4-T1, R4-T2, R8 enmendada]~~
-10. Frontera GCP+Polars ↔ PQ/Sheets — AVANCE PARCIAL S11 (5.7). Salida resuelta (BigQuery, Opción C). Restan: (c) mecanismo Sheets, (d) interfaz CÓMPUTO, fuente de entrada Drive/GCS, motor del artefacto R11. [D] (Bloque 3)
+10. Frontera GCP+Polars ↔ PQ/Sheets — AVANCE PARCIAL S11/S12/S13 (5.7, 5.9). Salida resuelta (BigQuery, Opción C); fuente de entrada resuelta (Drive, D-14.4, S12); sub-item (d) cerrado (S13: contrato de frontera de consumo propio de PR — R27 + atomicidad D-14.5). Resta únicamente: (c) mecanismo de conexión Sheets, motor del artefacto residual de R11. [D] (Bloque 3)
 ~~11. Mecanismo de resolución de "versión vigente" para archivos PR. [D] (Bloque 3)~~
 > Cerrado en S11. Ver Sección 5.6, R23–R26.
 13. Estructura de carpeta y mecanismo de resolución de "vigente" para la Tabla Mapeo de Tipologías — análogo a #11, sin estructura de carpeta declarada aún. [G] (Bloque 3)
@@ -794,4 +872,4 @@ Corrección dentro de S10: las filas NO_MATCH se excluyen también de la Tabla 3
 
 **S11 — 2026-06-19**: Bloque 3. Cierre de #11: mecanismo de resolución de versión vigente para archivos PR (R23–R26). Recorrido recursivo bajo ruta_archivo; carpetas con patrón <PREFIJO>_SEM_<AAAAMMDD>; fecha extraída del nombre de carpeta (nunca mtime, rechazado por inconsistencia bajo sync de Drive); match exacto de nombre_programa sensible a mayúsculas/espacios (homologado R18); selección por fecha máxima. Carpetas no conformes ignoradas sin abortar (R24). Cero coincidencias o empate en fecha máxima → abort multiobra completo (R25, R26), homologado a R16/R18. Cardinalidad de la hoja de programas vigentes corregida: una fila por (obra, macro_partida), macro_partida embebida en nombre_programa. Avance parcial de #10: frontera de salida resuelta — 3 tablas a BigQuery, PQ transitorio (Modelo 2) extrae vistas procesadas, split de motor Opción C (Polars dueño de reglas de fila hasta R8 + staging; BigQuery dueño de R4/R9/R10 + vistas de servicio); descartadas Opción A (dispersa no-lossy) y B (BigQuery pasivo, sin learning) (5.7, D-10.1/2/3). Restan en #10: (c) mecanismo Sheets, (d) interfaz CÓMPUTO, fuente de entrada Drive/GCS, motor del artefacto R11. Apertura de #13 (vigencia de Tabla Mapeo, análogo a #11, sin estructura declarada). Apertura de #14 (entorno de ejecución de Polars en PR — corregido supuesto erróneo de Colab, que pertenece a MIDAS). Próximo foco: #14 (entorno de ejecución, gatea fuente de entrada) o resto de #10, a decisión de Alberto.
 
-**S12 — 2026-06-20**: cierre de #14. Decisiones: entorno de ejecución = Cloud Run Job (run-to-completion, sin servidor HTTP), no Cloud Run Service — descartados GCE (ocioso) y Dataflow (sin caso de streaming) (D-14.1). Disparo programado vía Cloud Scheduler → Cloud Run Jobs Execute API; día/hora es parámetro de despliegue, no regla de negocio (D-14.2). Dimensionamiento validado: peor caso ≤24 archivos PR activos (6–7 obras × hasta 4 archivos), ≤12.000 filas cada uno, ≤288.000 filas/semana — carga trivial para Polars, cotas por defecto de Cloud Run Jobs suficientes (D-14.3). Autenticación a Drive: tanto los archivos PR por obra como la hoja de programas vigentes residen en la misma Shared Drive; service account del Job agregada como miembro directo con lectura, sin domain-wide delegation ni sincronización forzada a GCS — resuelve, dentro de #10, la bifurcación de fuente de entrada a favor de Drive (D-14.4). Mecánica de escritura a BigQuery: reemplazo completo (no acumulativo, no histórico) de stg_matched y recon_nomatch cada corrida semanal, justificado por la naturaleza operativa de PR (alimenta despacho, lot sizing — no análisis histórico); el reemplazo es diferido y atómico respecto de los gates de abort existentes (R16/R18/R25/R26): la escritura única a BigQuery solo se ejecuta si la corrida completa de las 6–7 obras no disparó ningún abort; si dispara, la escritura nunca se alcanza y el snapshot de la semana anterior permanece intacto — no se modifica ningún gate existente (D-14.5). Consecuencia auditada y aceptada explícitamente por Alberto: una falla estructural (R16/R18) en una sola obra congela el refresco de datos de las 6–7 obras esa semana, no solo el de la obra defectuosa. Auditoría de proceso: se identificó y corrigió una conflación inicial entre Cloud Run Service y Cloud Run Jobs antes de aceptar la decisión de entorno. #14 cerrado. Como consecuencia directa, #10 se reduce a: (c) mecanismo de conexión Sheets, (d) interfaz concreta de CÓMPUTO, motor del artefacto residual de R11. Próximo foco candidato: resto de #10 (Sheets/CÓMPUTO/artefacto R11) o #13 (vigencia de Tabla Mapeo de Tipologías), a decisión de Alberto.
+**S13 — 2026-06-20**: Bloque 3. Foco: #10, cierre del sub-item (d). Corrección de alcance: el ítem original ("interfaz concreta de CÓMPUTO contra BigQuery") se reemplaza por un contrato de frontera de consumo propio de PR, no la especificación interna de CÓMPUTO — esquema estable (§4) + señal de frescura + atomicidad. Decisiones: (1) nueva regla R27 (§5.9, nueva subsección — Contrato de Trazabilidad de Snapshot): run_date:Date estampado en stg_matched y recon_nomatch al momento de la escritura del Job, un único valor por corrida (la fecha de ejecución del Cloud Run Job, no la fecha de vigencia por obra de R23–R26, que puede diferir entre obras), heredado por passthrough en las vistas T1/T2/T3, incluido como miembro del GROUP BY en R4-T1/R4-T2 sin fragmentar el grano (constante por snapshot), distinto de fecha (dato de negocio R19–R22); granularidad Date, no Timestamp, suficiente dado que D-14.5 garantiza escritura solo tras corrida completa y exitosa. (2) Atomicidad de consumo: confirmado que D-14.5 (WRITE_TRUNCATE único, diferido) es garantía suficiente para lectura sin mezcla parcial entre snapshots en T1/T2/T3; no se agrega regla nueva, solo nota de cierre en §5.7. Esquemas de Tabla 1, Tabla 2 y Tabla 3 (§4, R15) enmendados para incluir run_date. Auditoría de proceso: se identificó staleness en el párrafo "Estado" de §5.7 (aún mencionaba Drive/GCS y #14 como abiertos, ya resueltos en S12) — corregido en esta sesión como limpieza, no como decisión nueva. #10 queda reducido a: (c) mecanismo de conexión Sheets, motor del artefacto residual de R11. Próximo foco candidato: (c) o motor de R11, a decisión de Alberto.
