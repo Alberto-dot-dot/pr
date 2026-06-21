@@ -2,10 +2,10 @@
 
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
 
-**Versión:** S13 → S14, fecha 2026-06-20.
-**Sesión de origen:** Bloque 3 (Arquitectura + Stack) — cierre TOTAL de #10. Sub-item (c): mecanismo de conexión de Sheets/Power Query para T1/T2/T3 (R28, nueva §5.10); partición de datasets staging/serving vía authorized views (R29, §5.10; D-10.4 en §5.7); retirada la restricción provisional "los analistas nunca acceden a T1/T2" — leen T1/T2 (vía PQ) y T3 (vía Connected Sheets) bajo identidad individual; R8 enmendada (destino fino de recon_nomatch: dataset de staging oculto, distribución mediada exclusivamente por el dueño del sistema). Motor del artefacto residual de R11: vista de BigQuery simétrica a T1/T2, complementaria a R9∪R10, declarada dentro del dataset de staging oculto —no en el de servicio— para no heredar el grant IAM de analistas (R30, §5.10). #10 cierra en su totalidad. Único PENDIENTE crítico restante en Bloque 3: #13.
+**Versión:** S14 → S15, fecha 2026-06-20.
+**Sesión de origen:** Bloque 3 (Arquitectura + Stack) — cierre de #13, último PENDIENTE crítico del bloque. Nueva subsección §5.11 (Contrato de Presencia — Tabla Mapeo de Tipologías). Decisiones: la Tabla Mapeo de Tipologías no tiene mecanismo de vigencia por versión — archivo único por obra, sobrescrito in situ, sin estructura de carpetas por fecha (descarta la analogía con R23–R26 en ese punto); ruta de la carpeta global ("Tipologias Obras") declarada como valor de configuración único, estructuralmente distinto de programas_vigentes por grano (R31); match de archivo por obra vía nombre normalizado (pipeline 5.1) contra obra_norm, divergencia deliberada de la postura literal de R18 (R32); gate de accesibilidad de la carpeta global, homologado a R16, abort global con log explícito (R31); gate de presencia por obra ante cero coincidencias o coincidencia ambigua — mismo tratamiento para ambas — exclusión acotada a esa obra (todas sus macro_partidas), las demás obras continúan, solo log de ejecución, sin artefacto persistido (R32), divergencia deliberada de la postura global de R25/R26. Con esto, Bloque 3 cierra en su totalidad. Bloque 4 (Roadmap) queda desbloqueado por la regla de gating de §7.
 **Módulo en foco:** PR — scope-lock activo (un solo módulo hasta PENDIENTE crítico vacío)
-**Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada S9/S10/S14), R9–R10, R11 (enmendada S10), R12–R22, R23–R26 (S11, cierre #11), R27 (S13, §5.9, cierre parcial #10), R28–R30 (S14, nuevas, §5.10, cierre total #10), R6.1 borde. R4 retirada en S9. R15 enmendada en S10: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]; enmendada nuevamente en S13 (R27): se agrega run_date. EN DISPUTA vacío desde S10.
+**Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada S9/S10/S14), R9–R10, R11 (enmendada S10), R12–R22, R23–R26 (S11, cierre #11), R27 (S13, §5.9, cierre parcial #10), R28–R30 (S14, nuevas, §5.10, cierre total #10), R31–R32 (S15, nuevas, §5.11, cierre #13), R6.1 borde. R4 retirada en S9. R15 enmendada en S10: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]; enmendada nuevamente en S13 (R27): se agrega run_date. EN DISPUTA vacío desde S10. PENDIENTE crítico vacío desde S15.
 
 **Test de verificabilidad (Definition of Done):** una regla está DEFINIDA si y solo si se expresa como
 `DADO [precondición] CUANDO [evento] ENTONCES el sistema DEBE [resultado observable]`, sin huecos.
@@ -44,6 +44,10 @@ Semántica de niveles declarada: N1 frente de trabajo · N2 edificio/torre · N3
 **Precondición estructural de parseo (DEFINIDA, cierra #8):** todo archivo PR, sin excepción para ninguna obra, sigue este layout físico fijo: las filas 1 a 5 y las columnas A a S (columnas 1–19) son ruido estático no estructurable — nunca se validan, se descartan incondicionalmente en la ingesta. La fila 6 es la fila de encabezado absoluta; la columna T es el origen de datos absoluto (offset 0), alineado con la primera entrada del esquema crudo (USAR). El formato de archivo se restringe exclusivamente a binario .xlsx. Reglas que gobiernan: R16–R18.
 
 **Tabla Mapeo de Tipologías (DEFINIDA):** tabla de dimensión curada, un archivo por obra, mantenida por analista. Esquema crudo: `[N1, N2, N3, N4, N5, Tipologia, Obra]`. Llave de join contra PR: `(obra_norm, N1_norm..N5_norm)`, ejecutada sobre columnas `_norm` en ambas tablas (R7). El sistema deriva en pipeline `obra_norm, N1_norm..N5_norm, tipologia_norm, id_tipologia`; ninguna `_norm` vive en el archivo. `obra_norm` proviene de la columna Obra cruda vía R5 (no del nombre de archivo). Vacío en Tipologia → rechazo de ingesta (R6.1).
+
+**Vigencia del archivo de mapeo (DEFINIDA, cierra #13):** a diferencia del archivo PR (§5.6), no existe mecanismo de versionado ni de "vigente" — es un archivo único y estático por obra, sobrescrito in situ por el analista; no hay estructura de carpetas por fecha. El problema resuelto en §5.11 es de presencia/identificación, no de selección temporal.
+
+**Carpeta global de mapeos de tipología (DEFINIDA, cierra #13):** ruta declarada como valor de configuración único y global del sistema, estructuralmente distinto de `programas_vigentes` — no es una columna de esa hoja, porque su valor no varía por (obra, macro_partida); es una constante de todo el sistema. Nombre de la carpeta: `Tipologias Obras`. Convención de nombre de archivo dentro de ella: `{obra}_mapeo_tipologias`, uno por obra. Accesibilidad de la carpeta gobernada por R31; resolución del archivo de una obra específica dentro de ella gobernada por R32
 
 
 ## 4. SALIDA OBJETIVO (DECLARADA, parcialmente indefinida)
@@ -674,6 +678,48 @@ ENTONCES el sistema DEBE exponerla mediante una vista de BigQuery —simétrica
    No modifica D-10.3: el motor de evaluación de membresía de R9/R10
    permanece en BigQuery; esta vista no introduce lógica nueva en Polars.
 
+### 5.11 Contrato de Presencia — Tabla Mapeo de Tipologías [cierra #13]
+
+Gobernanza: a diferencia del archivo PR (§5.6), la Tabla Mapeo de Tipologías no
+tiene mecanismo de vigencia por versión — es un archivo único por obra,
+mantenido y sobrescrito in situ por el analista, sin estructura de carpetas
+por fecha. El problema que resuelve esta subsección no es "cuál versión es
+la vigente" sino "¿existe, de forma inequívoca, el archivo correcto para
+esta obra?". Estos chequeos se ejecutan antes de R7 (join) y, en el caso de
+R31, antes de cualquier otro procesamiento del batch.
+
+R31 [cierra #13, gate de accesibilidad de carpeta global, homologado a R16]
+   DADO que el sistema necesita leer el contenido de la carpeta global
+   declarada (Tipologias Obras) para resolver el mapeo de cualquier obra
+   CUANDO se inicia una corrida y esa carpeta resulta inexistente, eliminada,
+   o sin permisos de lectura para la identidad de servicio del Job
+   ENTONCES el sistema DEBE abortar la corrida de ingesta completa para
+   todas las obras de inmediato, no producir salida para ninguna obra, y
+   registrar en el log de ejecución la causa específica de inaccesibilidad
+   (ruta declarada, tipo de error). Este chequeo precede a la resolución de
+   mapeo por obra (R32) y a cualquier otro procesamiento del batch.
+
+R32 [cierra #13, gate de presencia por obra, obra-acotado] DADO que la
+   carpeta global ha pasado el chequeo de R31
+   CUANDO el sistema busca, para una obra cuyo obra_norm ha sido derivado
+   (R3+R5), un archivo dentro de la carpeta cuyo nombre normalizado
+   (pipeline 5.1) coincida con `{obra_norm}_mapeo_tipologias`
+   ENTONCES, SI la búsqueda no produce exactamente una coincidencia —ya sea
+   cero coincidencias o más de una— el sistema DEBE excluir todas las
+   macro_partidas de esa obra de la corrida actual (no producir T1, T2 ni
+   T3 para esa obra esta semana), continuar procesando el resto de las
+   obras sin abortar la corrida multiobra completa, y registrar en el log
+   de ejecución la obra específica excluida y el motivo (cero coincidencias
+   vs. coincidencia ambigua). No genera artefacto persistido de excepción —
+   el log de ejecución del Job es el único registro.
+   Divergencia deliberada respecto a R25/R26: ese par homologa "cero
+   coincidencias o empate" a un abort global, aceptando que un solo archivo
+   defectuoso congele a todas las obras (D-14.5). R32 homologa el mismo tipo
+   de evento, exclusivamente para el artefacto de mapeo, a una exclusión
+   acotada a la obra afectada — las demás obras no se ven impactadas.
+   Si la búsqueda produce exactamente una coincidencia, el sistema procede a
+   leer y validar su contenido bajo el contrato ya existente (R6, R6.1, R7);
+   esta subsección no modifica esas reglas.
 
 ## 6. AUDITORÍA — GRIETAS ABIERTAS
 
@@ -694,7 +740,12 @@ ENTONCES el sistema DEBE exponerla mediante una vista de BigQuery —simétrica
 > D-10.4), y motor + destino del artefacto residual de R11 (R30, §5.10) —
 > todos resueltos. Sin items abiertos restantes en esta grieta.
 
-**G. Resolución de vigencia — Tabla Mapeo de Tipologías.** El mecanismo de R23–R26 resuelve vigencia exclusivamente para archivos PR (hoja de programas vigentes, §3). La Tabla Mapeo de Tipologías se declara en §3 como "un archivo por obra", sin estructura de carpeta ni mecanismo de versionado definidos. Pendiente: ¿existe versionado real (carpetas por fecha, análogas a R23) o es un archivo verdaderamente único y estático por obra, sin ambigüedad de "vigente"? Si hay versionado, ubicación de carpeta y patrón de nombre no declarados. [G] #13.
+~~**G. Resolución de vigencia — Tabla Mapeo de Tipologías.** El mecanismo de R23–R26 resuelve vigencia exclusivamente para archivos PR (hoja de programas vigentes, §3). La Tabla Mapeo de Tipologías se declara en §3 como "un archivo por obra", sin estructura de carpeta ni mecanismo de versionado definidos. Pendiente: ¿existe versionado real (carpetas por fecha, análogas a R23) o es un archivo verdaderamente único y estático por obra, sin ambigüedad de "vigente"? Si hay versionado, ubicación de carpeta y patrón de nombre no declarados. [G] #13.~~
+> Cerrado en S15. Confirmado estructuralmente (no por analogía): no hay
+> versionado, archivo único y estático por obra, sin ambigüedad de
+> "vigente". El problema real era de presencia/identificación, no de
+> selección temporal — resuelto por R31 (accesibilidad de carpeta global) y
+> R32 (presencia y match por obra). Ver §5.11.
  
 ~~**E. Contrato de consumo y grafo.** El "MRP Excel" consumidor no está identificado contra el grafo del sistema (¿PLANTIR? ¿módulo sin nombre? ¿legado externo?). Riesgo: el consumidor actual espera 13 columnas a nivel de fila; el nuevo output entrega tablas agregadas (count). Si necesita detalle por ubicación, la agregación rompe el contrato.~~
 > Cerrado S10: consumidor = CÓMPUTO (módulo declarado). T1 y T2 entregan counts agregados; CÓMPUTO solo necesita (obra, id_tipologia, id_actividad, count_unidades [+ fecha en T2]) — contrato no roto. T3 entrega reporte humano directo con esquema enmendado.
@@ -712,9 +763,9 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 
 - **Bloque 2 — Domain** (archivo) ← **CERRADO (S9)**. Resolvió A, B, C, F.
 
-- **Bloque 3 — Arquitectura + Stack** (archivo) ← **EN CURSO**. #11 cerrado (S11, R23–R26). #14 cerrado (S12, 5.8). #10 cerrado en su totalidad (S11, 5.7; S12, D-14.4; S13, R27/§5.9; S14, R28–R30/§5.10 + D-10.4). Resuelve D en su totalidad. Resta únicamente #13 (G) para cerrar Bloque 3.
+- **Bloque 3 — Arquitectura + Stack** (archivo) ← **CERRADO (S15)**. #11 cerrado (S11, R23–R26). #14 cerrado (S12, 5.8). #10 cerrado en su totalidad (S11, 5.7; S12, D-14.4; S13, R27/§5.9; S14, R28–R30/§5.10 + D-10.4). #13 cerrado (S15, R31–R32/§5.11). Resuelve D y G en su totalidad. Sin PENDIENTE crítico restante en este bloque.
 
-- **Bloque 4 — Roadmap por fases** (archivo). Depende de B2 + B3. Checkpoints críticos candidatos: integridad de llaves con join sin pérdida; resolución determinista de versión vigente.
+- **Bloque 4 — Roadmap por fases** (archivo) ← **DESBLOQUEADO (S15)**, no iniciado. Depende de B2 + B3, ambos cerrados. Checkpoints críticos candidatos: integridad de llaves con join sin pérdida; resolución determinista de versión vigente
 
 - **Bloque 5 — Development Fase 1** (archivo). Depende de B4.
 
@@ -952,6 +1003,22 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   D-10.3: el motor de R9/R10 permanece en BigQuery. Con esta regla, #10
   cierra en su totalidad. [D] (§5.10, R30, S14)
 
+- Vigencia y presencia del archivo de mapeo de tipologías (cierra #13):
+  confirmado estructuralmente, no por analogía con R23–R26 — no existe
+  versionado por fecha; es un archivo único y estático por obra, sobrescrito
+  in situ. Carpeta global declarada como valor de configuración único,
+  fuera del grano de programas_vigentes (Tipologias Obras). Convención de
+  nombre `{obra}_mapeo_tipologias`, match por nombre de archivo normalizado
+  (pipeline 5.1) contra obra_norm — divergencia deliberada de la postura
+  literal de R18. Gate de accesibilidad de la carpeta global, homologado a
+  R16: inaccesibilidad aborta la corrida completa, log explícito de la
+  causa (R31). Gate de presencia por obra: cero coincidencias y
+  coincidencia ambigua reciben el mismo tratamiento — exclusión de todas
+  las macro_partidas de la obra afectada en la corrida actual, las demás
+  obras continúan sin abort global, solo registro en el log de ejecución
+  del Job, sin artefacto persistido (R32) — divergencia deliberada de la
+  postura global de R25/R26. [G] (§5.11, R31–R32, S15)
+
 
 ### PARCIALMENTE DEFINIDO
 - Canonicalización de `""` vs `null` en ESTATUS C.CLOUD. Ambos valores ya
@@ -970,9 +1037,13 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 
 ~~- **#10** — Frontera GCP+Polars ↔ PQ/Sheets. Avance parcial S11/S12/S13. Resta únicamente: (c) mecanismo de conexión Sheets, motor del artefacto residual de R11. [D] (Bloque 3)~~
 > Cerrado en S14. Ver §5.10, R28–R30; D-10.4 en §5.7.
-- **#13** — Estructura de carpeta y resolución de "vigente" para la Tabla Mapeo de Tipologías; análogo a #11, sin estructura declarada. [G] (Bloque 3)
+~~- **#13** — Estructura de carpeta y resolución de "vigente" para la Tabla Mapeo de Tipologías; análogo a #11, sin estructura declarada. [G] (Bloque 3)~~
+> Cerrado en S15. Ver §5.11, R31–R32.
 
-13. Estructura de carpeta y mecanismo de resolución de "vigente" para la Tabla Mapeo de Tipologías — análogo a #11, sin estructura de carpeta declarada aún. [G] (Bloque 3)
+~~13. Estructura de carpeta y mecanismo de resolución de "vigente" para la Tabla Mapeo de Tipologías — análogo a #11, sin estructura de carpeta declarada aún. [G] (Bloque 3)~~
+> Cerrado en S15. Ver Sección 5.11, R31–R32.
+
+**PENDIENTE crítico: vacío desde S15.**
 ~~14. Entorno de ejecución del pipeline Polars de PR [...]. [D] (Bloque 3)~~
 > Cerrado en S12. Ver Sección 5.8, D-14.1–D-14.5.14. Entorno de ejecución del pipeline Polars de PR (Cloud Run / Function / GCE / Dataflow / otro) — no declarado. Bloquea la decisión de fuente de entrada (Drive vs GCS) y la mecánica de escritura a BigQuery. Surgido en S11 al descartar el supuesto erróneo de Colab (Colab pertenece a MIDAS, no a PR). [D] (Bloque 3)
 
@@ -1012,3 +1083,5 @@ Corrección dentro de S10: las filas NO_MATCH se excluyen también de la Tabla 3
 **S13 — 2026-06-20**: Bloque 3. Foco: #10, cierre del sub-item (d). Corrección de alcance: el ítem original ("interfaz concreta de CÓMPUTO contra BigQuery") se reemplaza por un contrato de frontera de consumo propio de PR, no la especificación interna de CÓMPUTO — esquema estable (§4) + señal de frescura + atomicidad. Decisiones: (1) nueva regla R27 (§5.9, nueva subsección — Contrato de Trazabilidad de Snapshot): run_date:Date estampado en stg_matched y recon_nomatch al momento de la escritura del Job, un único valor por corrida (la fecha de ejecución del Cloud Run Job, no la fecha de vigencia por obra de R23–R26, que puede diferir entre obras), heredado por passthrough en las vistas T1/T2/T3, incluido como miembro del GROUP BY en R4-T1/R4-T2 sin fragmentar el grano (constante por snapshot), distinto de fecha (dato de negocio R19–R22); granularidad Date, no Timestamp, suficiente dado que D-14.5 garantiza escritura solo tras corrida completa y exitosa. (2) Atomicidad de consumo: confirmado que D-14.5 (WRITE_TRUNCATE único, diferido) es garantía suficiente para lectura sin mezcla parcial entre snapshots en T1/T2/T3; no se agrega regla nueva, solo nota de cierre en §5.7. Esquemas de Tabla 1, Tabla 2 y Tabla 3 (§4, R15) enmendados para incluir run_date. Auditoría de proceso: se identificó staleness en el párrafo "Estado" de §5.7 (aún mencionaba Drive/GCS y #14 como abiertos, ya resueltos en S12) — corregido en esta sesión como limpieza, no como decisión nueva. #10 queda reducido a: (c) mecanismo de conexión Sheets, motor del artefacto residual de R11. Próximo foco candidato: (c) o motor de R11, a decisión de Alberto.
 
 **S14 — 2026-06-20**: Bloque 3. Foco: cierre total de #10 (ambos sub-items restantes). Nueva subsección §5.10 (Contrato de Consumo Externo — Sheets / Power Query / Aislamiento de Datasets). Decisiones: (1) R28 — mecanismo de conexión: modo pull exclusivo, sin componente intermedio que materialice o escriba datos (Connected Sheets para T3, Power Query para T1/T2), refresh manual por el analista, autenticación bajo identidad individual de Google; no modifica D-14.5. (2) R29 — partición de datasets: stg_matched y recon_nomatch en un dataset de staging oculto; T1, T2 y T3 como vistas autorizadas en un dataset de servicio separado; rol IAM de analista otorgado exclusivamente sobre el dataset de servicio — registrado también como D-10.4 en §5.7. Enmienda: se retira la restricción provisional "los analistas nunca acceden a T1/T2" (introducida y descartada dentro de la misma sesión, al detectarse contradicción con el flujo real de Power Query/Excel por-obra que alimenta a CÓMPUTO). Racional de Alberto: simplicidad operativa, datos no sensibles; consecuencia aceptada — visibilidad cross-obra en T1/T2, filtrado por obra diferido al dashboard/CÓMPUTO. (3) Amendment a R8: destino fino de recon_nomatch — dataset de staging oculto, distribución exclusiva del dueño del sistema. (4) R30 — motor y destino del artefacto residual de R11: vista de BigQuery simétrica a T1/T2, complementaria a R9∪R10, declarada dentro del dataset de staging (no en el de servicio) para no heredar el grant IAM de analistas; distribución exclusiva del dueño del sistema, en simetría con recon_nomatch; no modifica D-10.3, el motor de R9/R10 permanece en BigQuery. Auditoría de proceso: se identificó y corrigió una contradicción textual en D-10.3 (§5.7), que listaba a R11 como regla "consolidada en Polars" — corrección de redacción, no de decisión: el motor de evaluación de membresía R9/R10 fue y sigue siendo de BigQuery; solo el artefacto resultante (la vista residual) se ubica en el dataset de staging por razones de aislamiento de acceso, no porque Polars lo procese. #10 cierra en su totalidad. Único PENDIENTE crítico restante en Bloque 3: #13. Próximo foco: #13 (estructura de carpeta y resolución de "vigente" para la Tabla Mapeo de Tipologías) — cierra Bloque 3 si se resuelve.
+
+**S15 — 2026-06-20**: Bloque 3. Foco: #13, último PENDIENTE crítico del bloque — estructura de carpeta y resolución de "vigente" para la Tabla Mapeo de Tipologías. Auditoría inicial: se forzó la confirmación estructural antes de aceptar la analogía con R23–R26 (#11); resultado: no hay versionado por fecha, es un archivo único y estático por obra, sobrescrito in situ — el problema real es de presencia/identificación, no de selección temporal. Nueva subsección §5.11 (Contrato de Presencia — Tabla Mapeo de Tipologías). Decisiones: (1) carpeta global ("Tipologias Obras")  declarada como valor de configuración único, fuera del grano de `programas_vigentes` (grain mismatch identificado y resuelto: el folder path es una constante de sistema, no varía por (obra, macro_partida)). (2) Convención de nombre `{obra}_mapeo_tipologias`; match contra `obra_norm` ejecutado sobre el nombre de archivo normalizado (pipeline 5.1) — divergencia deliberada de la postura literal de R18, justificada porque el nombre de archivo es tipeado libremente por el analista. (3) R31 — gate de accesibilidad de la carpeta global, homologado a R16: carpeta inalcanzable aborta la corrida completa, log explícito de la causa específica; distingue una falla de configuración de sistema de una fallade archivo individual. (4) R32 — g ate de presencia por obra: cerocoincidencias y coincidencia ambigua (más de un archivo normaliza al mismo nombre esperado) reciben idéntico tratamiento — exclusión de todas las macro_partidas de la obra afectada en la corrida actual, las demás obras continúan sin abort global, solo log de ejecución del Job, sin artefacto persistido. Divergencia deliberada respecto a R25/R26 (que homologan el mismo tipo de evento a abort global): aquí la falla del artefacto de mapeo se acota a su obra, no se propaga. Con el cierre de #13, Bloque 3m cierra en su totalidad — sin PENDIENTE crítico restante. Bloque 4 (Roadmap por fases) queda desbloqueado por la regla de gating de §7. Próximo foco: decisión de Alberto sobre si abrir Bloque 4 (Roadmap) en la próxima sesión, o realizar una revisión de cierre de Bloque 3 antes de avanzar.
