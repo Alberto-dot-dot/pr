@@ -2,10 +2,19 @@
 
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
 
-**Versión:** S16 → S17, fecha 2026-06-21.
-**Sesión de origen:** Bloque 4 (Roadmap por fases) — descomposición de Fase 2 (GCP Infrastructure
-Provisioning) a ambos niveles (roadmap.md + development.md), siguiendo el patrón fijado en Fase 0/
-Fase 1. Auditoría de cobertura previa a la generación detectó y corrigió cuatro huecos: D-14.3 carecía
+**Versión:** S17 → S18, fecha 2026-06-21.
+**Sesión de origen:** Bloque 4 (Roadmap por fases) — descomposición de Fase 3 (Live Drive File
+Resolution) a ambos niveles (roadmap.md + development.md), siguiendo el patrón fijado en Fase 0/
+Fase 1/Fase 2. Resuelto el gap de imagen de producción diferido al cierre de Fase 2 (Paso 3.1, no
+diferido por segunda vez). Aclaración de scope sobre R31: "antes de cualquier otro procesamiento del
+batch" se acota a la cadena mapeo→join (R32→R7), NO es un lock secuencial literal sobre R23–R26 —
+ambas pistas son estructuralmente independientes y se diseñan como Precondition Gate concurrente
+(OR-abort / AND-success). R32 explícitamente excluido del gate: falla por-obra (exclusión acotada),
+no por-batch. Manejo de error transitorio de Drive API (retry-before-abort, 3 intentos, params de
+despliegue) incorporado al gate (3.2), diferenciado de fallo definitivo; no amienda R25/R31 — el
+retry precede a la señal de abort, no altera la condición de abort. Fase 3 cerrada en su totalidad
+(roadmap + 17 tareas atómicas). Próximo foco: descomposición de Fase 4 (BigQuery aggregation & service
+views — lado productor). Auditoría de cobertura previa a la generación detectó y corrigió cuatro huecos: D-14.3 carecía
 de Paso propio (foldeado como Done Criteria documental en 2.1.4, no Paso separado); ausencia de Paso
 terminal de verificación de aprovisionamiento (resuelto, nuevo Paso 2.5, contrato de salida explícito
 hacia Fase 3); ambigüedad de propiedad de dataset entre Fase 2 y Fase 4 sobre D-10.4 (resuelta: Fase 2
@@ -786,15 +795,18 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 
 - **Bloque 3 — Arquitectura + Stack** (archivo) ← **CERRADO (S15)**. #11 cerrado (S11, R23–R26). #14 cerrado (S12, 5.8). #10 cerrado en su totalidad (S11, 5.7; S12, D-14.4; S13, R27/§5.9; S14, R28–R30/§5.10 + D-10.4). #13 cerrado (S15, R31–R32/§5.11). Resuelve D y G en su totalidad. Sin PENDIENTE crítico restante en este bloque.
 
-- **Bloque 4 — Roadmap por fases** (archivo) ← **EN CURSO (S16–S17)**. Depende de B2 + B3, ambos
+- **Bloque 4 — Roadmap por fases** (archivo) ← **EN CURSO (S16–S18)**. Depende de B2 + B3, ambos
   cerrados. Estructura fijada: dos niveles (roadmap.md Fase/Paso descriptivo, development.md atómico
   con Status/Done Criteria/Done Evidence). Partición de Fases gobernada por el corte de motor D-10.3,
   no por conteo arbitrario. Fase 0 cerrada (roadmap + 11 tareas atómicas). Fase 1 descompuesta a nivel
   atómico (8 Pasos). Fase 2 (GCP Infrastructure Provisioning) descompuesta a nivel atómico (5 Pasos,
-  20 tareas); frontera de dataset con Fase 4 sobre D-10.4 resuelta (container vs. contenido); gap de
-  imagen de producción identificado y diferido a la apertura de Fase 3. Fases 3–5 declaradas a nivel
-  de tabla, sin desglose de Paso ni tareas atómicas — PENDIENTE de este bloque, no crítico para el
-  avance de Fase 2.
+  20 tareas); frontera de dataset con Fase 4 sobre D-10.4 resuelta (container vs. contenido). Fase 3
+  (Live Drive File Resolution) descompuesta a nivel atómico (4 Pasos, 17 tareas): 3.1 imagen de
+  producción + redespliegue del Job (resuelve el gap diferido de Fase 2), 3.2 Precondition Gate
+  concurrente (R31 ∥ R23–R26, OR-abort/AND-success, retry-before-abort), 3.3 resolución de mapeo por
+  obra (R32, exclusión acotada), 3.4 verificación en vivo + contrato de salida hacia Fase 4. Fases 4–5
+  declaradas a nivel de tabla, sin desglose de Paso ni tareas atómicas — PENDIENTE de este bloque, no
+  crítico para el avance inmediato.
 
 - **Bloque 6 — CLAUDE.md** (archivo) ← **ACTIVO (S16)**, no condicional. Enmienda: se retira la
   condicionalidad declarada en S15 — la arquitectura sin Colab y el contrato single-admin de PR sí
@@ -1121,6 +1133,29 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   de construir la imagen de producción del pipeline (código de Fase 1) y reemplazar el placeholder de
   2.1.3 — bloquea cualquier prueba real de R23–R26/R31–R32 contra el Job hasta resolverse.
 
+- Fase 3 (Live Drive File Resolution) descompuesta a nivel atómico en su totalidad: 4 Pasos (3.1
+  Production Image Build & Job Redeployment — resuelve el gap de imagen diferido de Fase 2, reemplaza
+  el placeholder de 2.1.3 por el código de Fase 1; 3.2 Precondition Gate, R31 ∥ R23–R26; 3.3 Per-Obra
+  Mapeo Presence Resolution, R32; 3.4 Live Resolution Verification & Exit Contract), 17 tareas
+  atómicas. Decisión arquitectónica de gate: R31 (accesibilidad de carpeta global de mapeos) y R23–R26
+  (resolución de PR vigente) son pistas estructuralmente independientes — tocan árboles de carpetas sin
+  relación — y se diseñan como un único Precondition Gate concurrente con semántica OR-abort (cualquier
+  pista que falle aborta la corrida completa antes de todo procesamiento de datos) y AND-success (ambas
+  deben resolver para levantar la barrera). Aclaración de scope sobre R31, registrada para trazabilidad
+  sin enmendar §5.11: "antes de cualquier otro procesamiento del batch" se acota a la cadena mapeo→join
+  (R32→R7), no es un lock secuencial literal sobre R23–R26. R32 excluido del gate por diseño: falla
+  por-obra (exclusión acotada), no por-batch — vive en su propio Paso (3.3) aguas abajo. Manejo de
+  error transitorio de Drive API incorporado al gate (3.2.1/3.2.2/3.2.3): retry-before-abort hasta 3
+  intentos con delay entre intentos, params como config de despliegue (homólogo a D-14.2), diferenciado
+  explícitamente del fallo definitivo (carpeta ausente, cero coincidencias, empate → abort en primera
+  respuesta sin retry). El retry precede a la señal de abort y NO amienda las condiciones de abort de
+  R25/R31; es capa de robustez de ejecución de Fase 3, no cambio de regla de Bloque 3. Paso terminal
+  3.4 (verificación en vivo) homólogo al 2.5 de Fase 2: prueba un ciclo completo contra la Shared Drive
+  real (no fixtures), confirma paridad fixture/vivo, escritura real WRITE_TRUNCATE con run_date (R27),
+  e inyección de cada ruta de abort/exclusión contra artefactos desechables. Contrato de salida: al
+  cierre de Fase 3, stg_matched/recon_nomatch portan datos vivos validados; Fase 4 sin dependencia
+  residual.
+
 
 - Metodología de Done Criteria a nivel de roadmap fijada: tareas atómicas usan Done Criteria de tipo
   checklist + Done Evidence — no el test DADO/CUANDO/ENTONCES, reservado exclusivamente para reglas
@@ -1200,42 +1235,28 @@ Corrección dentro de S10: las filas NO_MATCH se excluyen también de la Tabla 3
 
 **S15 — 2026-06-20**: Bloque 3. Foco: #13, último PENDIENTE crítico del bloque — estructura de carpeta y resolución de "vigente" para la Tabla Mapeo de Tipologías. Auditoría inicial: se forzó la confirmación estructural antes de aceptar la analogía con R23–R26 (#11); resultado: no hay versionado por fecha, es un archivo único y estático por obra, sobrescrito in situ — el problema real es de presencia/identificación, no de selección temporal. Nueva subsección §5.11 (Contrato de Presencia — Tabla Mapeo de Tipologías). Decisiones: (1) carpeta global ("Tipologias Obras")  declarada como valor de configuración único, fuera del grano de `programas_vigentes` (grain mismatch identificado y resuelto: el folder path es una constante de sistema, no varía por (obra, macro_partida)). (2) Convención de nombre `{obra}_mapeo_tipologias`; match contra `obra_norm` ejecutado sobre el nombre de archivo normalizado (pipeline 5.1) — divergencia deliberada de la postura literal de R18, justificada porque el nombre de archivo es tipeado libremente por el analista. (3) R31 — gate de accesibilidad de la carpeta global, homologado a R16: carpeta inalcanzable aborta la corrida completa, log explícito de la causa específica; distingue una falla de configuración de sistema de una fallade archivo individual. (4) R32 — g ate de presencia por obra: cerocoincidencias y coincidencia ambigua (más de un archivo normaliza al mismo nombre esperado) reciben idéntico tratamiento — exclusión de todas las macro_partidas de la obra afectada en la corrida actual, las demás obras continúan sin abort global, solo log de ejecución del Job, sin artefacto persistido. Divergencia deliberada respecto a R25/R26 (que homologan el mismo tipo de evento a abort global): aquí la falla del artefacto de mapeo se acota a su obra, no se propaga. Con el cierre de #13, Bloque 3m cierra en su totalidad — sin PENDIENTE crítico restante. Bloque 4 (Roadmap por fases) queda desbloqueado por la regla de gating de §7. Próximo foco: decisión de Alberto sobre si abrir Bloque 4 (Roadmap) en la próxima sesión, o realizar una revisión de cierre de Bloque 3 antes de avanzar.
 
-**S16 — 2026-06-21**: Bloque 4. Apertura formal del bloque tras el desbloqueo de S15. Fijación de la
-estructura de dos niveles (roadmap.md descriptivo + development.md atómico), espejada del proyecto
-MIDAS; corrección de un error de capa detectado en sesión (Done Criteria no se adjunta al nivel Paso).
-Partición de Fases (0–5) fijada por el corte de motor D-10.3, no por conteo arbitrario — revisada dos
-veces en sesión (GCP promovido a Fase propia; R29 dividido entre Fase 4 y Fase 5). Resuelta la
-consideración abierta heredada de S15 sobre el momento de introducción del agente ejecutor: Claude
-Code es asistente de desarrollo sin rol en el runtime de producción (que permanece autónomo, Bloque 3
-sin cambios); resolución transversal, no atada a un Paso específico. Fase 0 cerrada en su totalidad
-(roadmap + 11 tareas atómicas, decisiones de convención: paquete `pr`, requirements.txt pineado, src-
-layout con pyproject.toml mínimo, .python-version, VS Code con extensiones acotadas a Fase 0). Fase 1
-descompuesta a nivel atómico en su totalidad (8 Pasos); auditoría de cobertura detectó y corrigió tres
-huecos (R13 y R3/R3.1 huérfanos, ausencia de Paso terminal de contrato de salida) antes de generar las
-tareas atómicas. Bloque 6 (CLAUDE.md) reclasificado de condicional a activo, secuenciado entre B4 y
-B5 (enmienda de §7: B4→B6→B5). Próximo foco: descomposición de Fase 2 (GCP Infrastructure
-Provisioning) siguiendo el mismo patrón de dos niveles; pendiente de bloque, no crítico: desglose de
-Fases 2–5 restantes.
+**S16 — 2026-06-21**: Bloque 4. Apertura formal del bloque tras el desbloqueo de S15. Fijación de la estructura de dos niveles (roadmap.md descriptivo + development.md atómico), espejada del proyecto MIDAS; corrección de un error de capa detectado en sesión (Done Criteria no se adjunta al nivel Paso). Partición de Fases (0–5) fijada por el corte de motor D-10.3, no por conteo arbitrario — revisada dos veces en sesión (GCP promovido a Fase propia; R29 dividido entre Fase 4 y Fase 5). Resuelta la consideración abierta heredada de S15 sobre el momento de introducción del agente ejecutor: Claude Code es asistente de desarrollo sin rol en el runtime de producción (que permanece autónomo, Bloque 3 sin cambios); resolución transversal, no atada a un Paso específico. Fase 0 cerrada en su totalidad (roadmap + 11 tareas atómicas, decisiones de convención: paquete `pr`, requirements.txt pineado, src-layout con pyproject.toml mínimo, .python-version, VS Code con extensiones acotadas a Fase 0). Fase 1 descompuesta a nivel atómico en su totalidad (8 Pasos); auditoría de cobertura detectó y corrigió tres huecos (R13 y R3/R3.1 huérfanos, ausencia de Paso terminal de contrato de salida) antes de generar las tareas atómicas. Bloque 6 (CLAUDE.md) reclasificado de condicional a activo, secuenciado entre B4 y B5 (enmienda de §7: B4→B6→B5). Próximo foco: descomposición de Fase 2 (GCP Infrastructure Provisioning) siguiendo el mismo patrón de dos niveles; pendiente de bloque, no crítico: desglose de Fases 2–5 restantes.
 
-**S17 — 2026-06-21**: Bloque 4. Foco: descomposición de Fase 2 (GCP Infrastructure Provisioning) a
-ambos niveles. Roadmap-level: 5 Pasos (2.1 Aprovisionamiento base y Despliegue del Job — Artifact
-Registry, D-14.3 sin override, observabilidad; 2.2 Disparo programado — Scheduler, permiso
-run.jobs.run; 2.3 Autenticación SA-Drive; 2.4 Datasets BigQuery container-level, pr_staging/pr_serving;
-2.5 Verificación de aprovisionamiento y contrato de salida hacia Fase 3). Atomic-level: 20 tareas.
-Auditoría de cobertura, antes de cerrar: D-14.3 foldeado en 2.1.4 (no Paso propio); Paso terminal 2.5
-agregado (ausente en el borrador); frontera Fase2/Fase4 sobre D-10.4 resuelta explícitamente — Fase 2
-posee container (datasets físicos + IAM base), Fase 4 posee contenido (tablas, vistas, authorized
-views link). Contrapropuesta de Alberto incorporada en su totalidad: habilitación de Drive API y
-Artifact Registry API agregada a 2.1.1 (omisión detectada por Alberto, no por la auditoría inicial);
-provisión física de Artifact Registry agregada como 2.1.2, bloqueante para la creación del Job;
-observabilidad/alertas de fallo agregada como 2.1.5 — extensión deliberada de scope, justificada
-contra la consecuencia ya aceptada en S12 (D-14.5: fallo estructural congela refresco sin aviso);
-precisión de IAM corregida en 2.2.3 (run.jobs.run en vez de run.invoker genérico). Verificado y
-descartado: riesgo de permiso de pull de Artifact Registry para la SA del Job — cubierto
-implícitamente por el smoke test de 2.1.6, sin necesidad de tarea nueva. Gap nuevo identificado y
-diferido, no resuelto en esta sesión: ninguna Fase posee la tarea de construir la imagen de producción
-del pipeline (código de Fase 1) y reemplazar el placeholder de 2.1.3 — debe resolverse como primer
-punto al abrir Fase 3, antes de poder testear R23–R26/R31–R32 contra un Job real. Convención de
-nombres de dataset fijada: pr_staging / pr_serving. Fase 2 cerrada en su totalidad. Próximo foco:
-apertura de Fase 3 (Resolución de Archivo en Vivo), resolviendo primero el gap de imagen de producción
-antes de descomponer R23–R26/R31–R32.
+**S17 — 2026-06-21**: Bloque 4. Foco: descomposición de Fase 2 (GCP Infrastructure Provisioning) a ambos niveles. Roadmap-level: 5 Pasos (2.1 Aprovisionamiento base y Despliegue del Job — Artifact Registry, D-14.3 sin override, observabilidad; 2.2 Disparo programado — Scheduler, permiso run.jobs.run; 2.3 Autenticación SA-Drive; 2.4 Datasets BigQuery container-level, pr_staging/pr_serving; 2.5 Verificación de aprovisionamiento y contrato de salida hacia Fase 3). Atomic-level: 20 tareas. Auditoría de cobertura, antes de cerrar: D-14.3 foldeado en 2.1.4 (no Paso propio); Paso terminal 2.5 agregado (ausente en el borrador); frontera Fase2/Fase4 sobre D-10.4 resuelta explícitamente — Fase 2 posee container (datasets físicos + IAM base), Fase 4 posee contenido (tablas, vistas, authorized views link). Contrapropuesta de Alberto incorporada en su totalidad: habilitación de Drive API y Artifact Registry API agregada a 2.1.1 (omisión detectada por Alberto, no por la auditoría inicial); provisión física de Artifact Registry agregada como 2.1.2, bloqueante para la creación del Job; observabilidad/alertas de fallo agregada como 2.1.5 — extensión deliberada de scope, justificada contra la consecuencia ya aceptada en S12 (D-14.5: fallo estructural congela refresco sin aviso); precisión de IAM corregida en 2.2.3 (run.jobs.run en vez de run.invoker genérico). Verificado y descartado: riesgo de permiso de pull de Artifact Registry para la SA del Job — cubierto implícitamente por el smoke test de 2.1.6, sin necesidad de tarea nueva. Gap nuevo identificado y diferido, no resuelto en esta sesión: ninguna Fase posee la tarea de construir la imagen de producción del pipeline (código de Fase 1) y reemplazar el placeholder de 2.1.3 — debe resolverse como primer punto al abrir Fase 3, antes de poder testear R23–R26/R31–R32 contra un Job real. Convención de nombres de dataset fijada: pr_staging / pr_serving. Fase 2 cerrada en su totalidad. Próximo foco: apertura de Fase 3 (Resolución de Archivo en Vivo), resolviendo primero el gap de imagen de producción antes de descomponer R23–R26/R31–R32.
+
+**S18 — 2026-06-21**: Bloque 4. Foco: descomposición de Fase 3 (Live Drive File Resolution) a ambos
+niveles. Gap de imagen de producción de Fase 2 resuelto como Paso 3.1 (no diferido por segunda vez):
+construye la imagen del código de Fase 1, reemplaza el placeholder de 2.1.3, redespliega el Job, re-
+ejecuta smoke test contra la imagen real. Resolución de la ambigüedad de R31 (planteada en Modo
+Socrático): "antes de cualquier otro procesamiento del batch" se acota a la cadena mapeo→join
+(R32→R7), NO es lock secuencial literal sobre R23–R26 — Alberto confirmó pistas independientes. Diseño
+de gate fijado: R31 ∥ R23–R26 como Precondition Gate concurrente, OR-abort / AND-success, aguas arriba
+de toda lógica row-level de Polars (Paso 3.2). R32 excluido del gate por diseño (falla por-obra,
+exclusión acotada vs. abort global de R31/R25/R26) — Paso propio (3.3). Auditoría de cobertura: se
+forzaron dos pistas de error distintas por radio de explosión divergente (global vs. por-obra), y se
+agregó Paso terminal de verificación en vivo (3.4) homólogo al 2.5 de Fase 2. Manejo de error
+transitorio de Drive API decidido IN SCOPE (Alberto, Opción 1): retry-before-abort hasta 3 intentos,
+params de despliegue, cobertura extendida a 3.2.1/3.2.2/3.2.3 (3.2.3 extendido sobre lo nombrado por
+Alberto, flagueado y aceptado por silencio constructivo — confirmar si se requiere override);
+diferenciación transitorio/definitivo normativa en todo 3.2; no amienda R25/R31. Postura de params de
+retry (config de despliegue, no constantes) propuesta como reversible de una línea, no objetada. Fase
+3 cerrada en su totalidad (roadmap + 17 tareas atómicas, todas [BACKLOG]). PENDIENTE no bloqueante
+arrastrado: esquema fino de la cola de anomalías (R2/R6.1/R22), aún diferido. Próximo foco: apertura de
+Fase 4 (BigQuery aggregation & service views — lado productor: R4-T1/R4-T2, ruteo R9/R10, vistas
+T1/T2/T3, partición de dataset R29, estampado run_date R27, link de authorized views).
+
