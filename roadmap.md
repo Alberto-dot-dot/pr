@@ -112,3 +112,106 @@ Entregables: APIs habilitadas y repositorio AR creado; Cloud Run Job y Scheduler
     y declarar explícitamente qué puede asumir Fase 3 como cerrado. No incluye lógica de R31/R32.
   Entregables: lectura real de Drive confirmada vía la SA; config física de datasets verificada; 
     smoke test Scheduler→Job completo; contrato de salida declarado.
+
+## FASE 3 — Live Drive File Resolution
+
+**Objetivo de Fase:** Resolver, contra la Shared Drive real, los archivos físicos
+vigentes antes de que el pipeline Polars (Fase 1) procese cualquier fila. Cubre la
+resolución de versión vigente del archivo PR (R23–R26) y la resolución de presencia/
+match del archivo de mapeo de tipologías (R31–R32). Depende explícitamente de la
+service account provisionada y verificada end-to-end en Fase 2 (Paso 2.5).
+
+**Decisión arquitectónica de gate (S18):** R31 (accesibilidad de carpeta global de
+mapeos) y R23–R26 (resolución de archivo PR vigente) son pistas estructuralmente
+independientes — tocan árboles de carpetas sin relación entre sí. Se diseñan como un
+único Precondition Gate concurrente con semántica OR-abort (si cualquiera de las dos
+pistas falla, la corrida completa aborta antes de todo procesamiento de datos) y
+AND-success (ambas pistas deben resolver para levantar la barrera). R32 NO forma parte
+de este gate: falla por-obra (exclusión acotada), no por-batch (abort global), y vive
+en su propio Paso aguas abajo.
+
+---
+
+### Paso 3.1 — Production Image Build & Job Redeployment
+
+**Nombre:** Construcción de imagen de producción y redespliegue del Job.
+
+**Objetivo:** Reemplazar el placeholder de imagen empujado en 2.1.3 por el código real
+del pipeline de Fase 1, redesplegar el Cloud Run Job contra esa imagen, y reconfirmar
+que el Job ejecuta sin errores de runtime. Resuelve el gap explícito diferido al cierre
+de Fase 2: ninguna Fase poseía la tarea de imagen de producción, y la resolución en vivo
+no puede testearse contra un contenedor placeholder.
+
+**Entregables:**
+- Imagen de producción del pipeline (código de Fase 1) en Artifact Registry, reemplazando
+  el tag placeholder de 2.1.3.
+- Cloud Run Job redesplegado referenciando la imagen de producción.
+- Smoke test (homólogo a 2.1.6) re-ejecutado contra la imagen real — confirma ejecución
+  sin error de runtime, aún no contra datos en vivo de Drive.
+
+---
+
+### Paso 3.2 — Precondition Gate: Mapeo-Folder Accessibility (R31) ∥ PR-Vigente Resolution (R23–R26)
+
+**Nombre:** Gate de precondición — accesibilidad de carpeta de mapeos ∥ resolución de PR vigente.
+
+**Objetivo:** Implementar la barrera concurrente que resuelve ambas pistas independientes
+antes de que cualquier lógica row-level de Polars se ejecute. Incluye manejo de errores
+transitorios de la Drive API (retry-before-abort) diferenciado de los fallos definitivos.
+
+**Entregables:**
+- Gate de accesibilidad de la carpeta global `Tipologias Obras` (R31), con reintento ante
+  error transitorio y abort global ante fallo definitivo o reintentos agotados.
+- Resolución de archivo PR vigente (R23–R26): recorrido recursivo, descarte de carpetas no
+  conformes, selección por fecha máxima, abort global ante cero coincidencias o empate
+  (mtime excluido como criterio de desempate), con reintento ante error transitorio.
+- Wrapper de concurrencia con semántica OR-abort / AND-success: ambas pistas corren en
+  paralelo; el primer fallo definitivo en cualquiera detiene el batch de inmediato; ambas
+  deben resolver para proceder a 3.3.
+- Diferenciación explícita transitorio (reintenta) vs. definitivo (aborta en primera
+  respuesta) registrada en el log con su clase de fallo.
+
+---
+
+### Paso 3.3 — Per-Obra Mapeo Presence Resolution (R32)
+
+**Nombre:** Resolución de presencia de mapeo por obra.
+
+**Objetivo:** Para cada obra que pasó el gate de 3.2, resolver su archivo de mapeo
+específico dentro de la carpeta global ya confirmada accesible. Falla acotada a la obra
+afectada (exclusión), no abort global — divergencia deliberada respecto a R25/R26, fijada
+en S15.
+
+**Entregables:**
+- Match de nombre de archivo normalizado (pipeline 5.1) de `{obra_norm}_mapeo_tipologias`
+  contra `obra_norm` — divergencia deliberada de la postura literal de R18.
+- Manejo de cero/ambiguo: exclusión de todas las macro_partidas de la obra afectada de la
+  corrida actual, log de obra + motivo, continuación del resto del batch sin abortar.
+- Handoff del path de mapeo resuelto hacia la lógica existente de Fase 1 (R6, R6.1, R7)
+  para las obras con match exacto.
+
+---
+
+### Paso 3.4 — Live Resolution Verification & Exit Contract toward Fase 4
+
+**Nombre:** Verificación de resolución en vivo y contrato de salida hacia Fase 4.
+
+**Objetivo:** Probar, contra la Shared Drive real, un ciclo completo de resolución en vivo
+— no contra fixtures. Homólogo al Paso terminal 2.5 de Fase 2. Garantiza que Fase 4
+(agregación y vistas BigQuery) puede asumir, sin dependencia residual, que datos vivos y
+validados ya fluyen al landing point.
+
+**Entregables:**
+- Un ciclo completo en vivo para al menos una obra real con archivos PR y de mapeo
+  conocidos-buenos: resolución exitosa a través de 3.2 y 3.3.
+- Confirmación de que el pipeline de Fase 1 (construido/testeado solo contra fixtures) se
+  comporta idénticamente alimentado con paths resueltos en vivo.
+- Escritura real WRITE_TRUNCATE a `stg_matched` / `recon_nomatch` en `pr_staging`, con
+  `run_date` estampado correctamente (R27).
+- Verificación de cada ruta de abort/exclusión contra artefactos de prueba desechables (no
+  datos de producción): carpeta de mapeos inaccesible, PR vigente cero/empate, mapeo por
+  obra cero/ambiguo — confirma abort global para las dos primeras y exclusión acotada para
+  la tercera.
+- Contrato de salida documentado: al cierre de Fase 3, `stg_matched` / `recon_nomatch`
+  contienen datos vivos y validados; Fase 4 sin dependencia residual de Fase 3.
+  
