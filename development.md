@@ -604,3 +604,178 @@ Done Evidence:
   Done Criteria:
   1. Contrato de salida escrito y referenciado desde la entrada de Fase 3.
   Done Evidence:
+
+### Phase 3.1
+
+* 3.1.1 — Package Fase 1 pipeline into production image
+Build a container image from src/pr/ using Fase 0's pinned requirements.txt.
+No GCP interaction yet — local/CI build only.
+Status: [BACKLOG]
+Done Criteria:
+1. Image builds from src/pr/ against the exact pins in requirements.txt (== only).
+2. Image entrypoint invokes the Fase 1 pipeline as a run-to-completion job (no HTTP server).
+3. Build is reproducible: same requirements.txt produces the same dependency set.
+4. No GCP credentials or live Drive access required to build.
+Done Evidence:
+
+* 3.1.2 — Push production image to Artifact Registry
+Replace the 2.1.3 placeholder tag with the production image.
+Status: [BACKLOG]
+Done Criteria:
+1. Image pushed to the Artifact Registry repo provisioned in 2.1.2.
+2. The 2.1.3 placeholder tag is superseded — the Job's referenced tag now resolves to the production image.
+3. Push uses the Job's deploy identity; no domain-wide credentials introduced.
+Done Evidence:
+
+* 3.1.3 — Redeploy Cloud Run Job against production image
+Status: [BACKLOG]
+Done Criteria:
+1. Cloud Run Job updated to reference the production image tag from 3.1.2.
+2. Resource bounds unchanged from 2.1.4 (no override — D-14.3 holds).
+3. Scheduler binding from 2.2 intact after redeploy (run.jobs.run identity unaffected).
+Done Evidence:
+
+* 3.1.4 — Smoke test against real image
+Re-run the 2.1.6 smoke test against the production image. Confirms runtime health
+only — NOT live Drive resolution (that is 3.4).
+Status: [BACKLOG]
+Done Criteria:
+1. Job executes to completion against the production image without runtime/import error.
+2. Test asserts the pipeline reaches its first Drive-read boundary and halts cleanly when no live resolution is wired yet (expected controlled stop, not a crash).
+3. No write to pr_staging occurs in this test.
+Done Evidence:
+
+
+### Phase 3.2
+
+> Retry posture (proposed, reversible): retry count (3) and inter-attempt delay are
+> DEPLOYMENT PARAMETERS, not hardcoded constants — homologous to D-14.2's treatment of
+> Scheduler day/hour. Retry coverage extends to 3.2.1, 3.2.2 AND 3.2.3. Override either
+> by request; both are one-line changes.
+>
+> Transient vs. definitive distinction (normative for all of 3.2): transient =
+> connection-class error (timeout, rate-limit, 5xx) → retry up to 3 attempts total.
+> Definitive = clean negative result (folder absent, permission denied, zero matches,
+> tie) → abort on first response, NO retry. Retry sits BEFORE the abort signal; it does
+> not amend R25/R31's abort conditions.
+
+* 3.2.1 — R31: mapeo-folder accessibility gate, with retry
+Verify Tipologias Obras is reachable via the Drive API.
+Status: [BACKLOG]
+Done Criteria:
+1. Verifies the declared global folder Tipologias Obras is reachable via the Drive API using the Fase 2 service account identity.
+2. Transient errors (timeout, rate-limit, 5xx) retried up to 3 attempts total, with an inter-attempt delay; retry params read from deployment config.
+3. Definitive negative (folder absent, permission denied) aborts on first response — no retry.
+4. On exhausted retries OR definitive negative: raises global abort, produces no output for any obra, logs declared path + error type + failure class (transient-exhausted vs. definitive).
+5. This check is independent of the R23–R26 track (no shared folder/data); it does NOT block R23–R26 from running.
+Done Evidence:
+
+* 3.2.2 — R23–R24: recursive traversal & date extraction, with retry
+Status: [BACKLOG]
+Done Criteria:
+1. For each (ruta_archivo, nombre_programa) fila in the programas_vigentes sheet, recursively traverses the tree under ruta_archivo.
+2. Identifies folders matching <PREFIJO>_SEM_<AAAAMMDD>, extracts the encoded date from the folder name (never mtime).
+3. Non-conforming folders (R24) are ignored as date candidates without aborting; traversal continues.
+4. Transient Drive API errors during traversal retried up to 3 attempts total, inter-attempt delay from deployment config.
+5. On exhausted retries: raises global abort, logs the specific fila + failure class.
+Done Evidence:
+
+* 3.2.3 — R25–R26: max-date selection & match resolution, with retry
+Status: [BACKLOG]
+Done Criteria:
+1. Within date-conforming folders, matches nombre_programa exactly (case/space-sensitive, homologous to R18); selects the file under the maximum encoded date as vigente.
+2. Zero matches anywhere in the tree → definitive abort on first conclusive result, no retry (R25).
+3. More than one match under the max date → definitive abort, no retry; mtime explicitly NOT used as tiebreaker (R26).
+4. Transient Drive API errors during this resolution retried up to 3 attempts total, inter-attempt delay from deployment config.
+5. On exhausted retries (transient) OR definitive zero/tie: raises global abort, produces no output for any obra, logs the specific fila + failure class.
+Done Evidence:
+
+* 3.2.4 — Concurrency wrapper (OR-abort)
+Status: [BACKLOG]
+Done Criteria:
+1. Runs the R31 track (3.2.1) and the R23–R26 track (3.2.2 + 3.2.3 across all declared filas) concurrently.
+2. The first definitive failure on EITHER track halts the entire batch immediately (OR-abort) — the other track's in-flight work is not awaited for completion before abort.
+3. A transient retry in progress on one track does not by itself abort the run; only an exhausted-retry or definitive failure does.
+4. Abort signal carries the originating track + failure class for the log.
+Done Evidence:
+
+* 3.2.5 — AND-success barrier
+Status: [BACKLOG]
+Done Criteria:
+1. Proceeds to Paso 3.3 only if BOTH conditions hold: Tipologias Obras confirmed accessible (3.2.1) AND every declared fila resolved to exactly one vigente PR file (3.2.2 + 3.2.3).
+2. If either condition is unmet, the run has already aborted via 3.2.4 — the barrier is never reached in a partial-success state.
+3. No Polars row-level processing (5.1, R14, R1/R6, R7) executes before this barrier lifts.
+Done Evidence:
+
+
+### Phase 3.3
+
+* 3.3.1 — R32: normalized per-obra mapeo filename match
+Status: [BACKLOG]
+Done Criteria:
+1. For each obra whose obra_norm was derived (R3+R5), searches Tipologias Obras for a file whose normalized name (pipeline 5.1) equals {obra_norm}_mapeo_tipologias.
+2. Match is executed on the NORMALIZED filename — deliberate divergence from R18's literal posture, per S15 (filename is free-typed by the analyst).
+3. Produces exactly one of three outcomes per obra: single-match, zero-match, ambiguous-match (>1).
+Done Evidence:
+
+* 3.3.2 — R32: zero/ambiguous handling, scoped exclusion
+Status: [BACKLOG]
+Done Criteria:
+1. Zero-match AND ambiguous-match receive identical treatment: exclude ALL macro_partidas of that obra from the current run.
+2. The run does NOT abort — remaining obras continue processing (scoped exclusion, deliberate divergence from R25/R26's global abort).
+3. Logs the excluded obra + reason (zero vs. ambiguous) to the Job execution log.
+4. No persisted exception artifact is produced — the execution log is the sole record (per R32).
+Done Evidence:
+
+* 3.3.3 — Handoff of resolved mapeo to Fase 1 join pipeline
+Status: [BACKLOG]
+Done Criteria:
+1. For single-match obras, the resolved mapeo file path is handed to Fase 1's existing R6/R6.1/R7 logic.
+2. No new validation logic is introduced here — R6 (id_tipologia), R6.1 (empty-tipologia reject), R7 (join) are unchanged by Fase 3 (per R32 closing clause).
+3. Excluded obras (3.3.2) are absent from the set handed to the join.
+Done Evidence:
+
+
+### Phase 3.4
+
+* 3.4.1 — Single-obra live resolution cycle
+Status: [BACKLOG]
+Done Criteria:
+1. Runs one full live cycle against the real Shared Drive for at least one real obra with known-good PR and mapeo files.
+2. Resolution succeeds through the 3.2 gate and 3.3 per-obra match.
+3. Uses the Fase 2 service account end-to-end; no developer credentials.
+Done Evidence:
+
+* 3.4.2 — Fixture/live parity confirmation
+Status: [BACKLOG]
+Done Criteria:
+1. The Fase 1 pipeline (built/tested only against fixtures) produces identical row-level behavior when fed live-resolved file paths.
+2. Any divergence between fixture and live behavior is treated as a blocking defect, not an accepted variance.
+Done Evidence:
+
+* 3.4.3 — Real staging write with run_date
+Status: [BACKLOG]
+Done Criteria:
+1. A real WRITE_TRUNCATE write to stg_matched and recon_nomatch in pr_staging occurs from live-resolved data.
+2. run_date is stamped on every row of both tables, single value for the run (R27).
+3. Write is atomic per D-14.5: it executes only because no abort gate fired in this cycle.
+Done Evidence:
+
+* 3.4.4 — Abort/exclusion path injection
+Status: [BACKLOG]
+Done Criteria:
+1. Against DISPOSABLE test artifacts (never production data), each failure path is injected and verified:
+   a. mapeo folder inaccessible → global abort (R31).
+   b. PR vigente zero match / tie → global abort (R25/R26).
+   c. per-obra mapeo zero / ambiguous → scoped exclusion, run continues (R32).
+2. Transient-error retry is exercised: a simulated transient error recovers within 3 attempts and does NOT abort; an exhausted transient DOES abort.
+3. Each path's log output carries the correct failure class.
+Done Evidence:
+
+* 3.4.5 — Exit contract toward Fase 4
+Status: [BACKLOG]
+Done Criteria:
+1. Documents that at Fase 3 close, stg_matched / recon_nomatch carry live, validated data.
+2. Confirms Fase 4 (aggregation/views) has no residual dependency on Fase 3 resolution logic — it consumes the staging tables only.
+3. The two-track gate behavior and the per-obra exclusion are recorded as verified, not assumed.
+Done Evidence:
