@@ -59,9 +59,7 @@ executes and the work-commit hash is recorded in Done Evidence.
 
 ## Sub-tasks
 
-### Governance
-
-
+### Fase 0.1 - Enviroment
 * 0.1.1 — Pin Python interpreter version
 Create .python-version declaring the target interpreter version for local development, matching what the eventual Cloud Run Job container will use.
 Status: [BACKLOG]
@@ -452,4 +450,157 @@ Done Evidence:
   1. recon_nomatch carries at least distinct obra+N1..N5 NO_MATCH tuples.
   2. R2, R6.1, and R22 routed rows land in the anomaly stub.
   3. The anomaly artifact's fine schema is explicitly marked deferred.
+  Done Evidence:
+
+### Fase 2.1 — Aprovisionamiento base y Despliegue del Cloud Run Job
+
+* 2.1.1 — Habilitar APIs de GCP requeridas
+  Habilitar Cloud Run Admin API, Cloud Scheduler API, BigQuery API, Artifact Registry API y Google Drive API en el proyecto target. Precondición absoluta de la fase.
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Las cinco APIs (Run, Scheduler, BQ, Artifact Registry, Drive) aparecen como habilitadas en el proyecto.
+  Done Evidence:
+
+* 2.1.2 — Provisión de Artifact Registry
+  Crear el repositorio físico en Artifact Registry para alojar la imagen del pipeline, requisito bloqueante antes de instanciar el Job.
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Repositorio con formato Docker creado en Artifact Registry en la región target.
+  Done Evidence:
+
+* 2.1.3 — Crear el Cloud Run Job
+  Crear el Job (tipo Jobs, no Service) en el proyecto/región target. Subir una imagen placeholder/stub al repositorio de 2.1.2 para permitir la creación física del recurso.
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Imagen placeholder subida al Artifact Registry.
+  2. Job existe, tipo confirmado run-to-completion, sin trigger HTTP.
+  Done Evidence:
+
+* 2.1.4 — Configurar recursos del Job sin override (D-14.3)
+  Documentar explícitamente que CPU/memoria/timeout permanecen en sus valores default de Cloud Run Jobs, con referencia a D-14.3.
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Manifest/config documenta "sin override; default suficiente," con referencia explícita a D-14.3.
+  2. Ningún tier de recursos elevado fue solicitado.
+  Done Evidence:
+
+* 2.1.5 — Configurar observabilidad y alertas del Job
+  Añadir telemetría básica (vía Cloud Logging alerts o Log Metrics) para evitar el punto ciego del Scheduler ante fallos internos del Job.
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Canal de alerta/métrica configurado para capturar y notificar fallos internos durante la ejecución del contenedor.
+  Done Evidence:
+
+* 2.1.6 — Smoke test manual de ejecución
+  Ejecutar el Job manualmente utilizando la imagen placeholder.
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Ejecución completa sin error de infraestructura.
+  Done Evidence:
+
+### Fase 2.2 — Configuración del disparo programado
+
+* 2.2.1 — Crear el Cloud Scheduler job
+  Apuntar al endpoint de la Execute API del Job de 2.1.3, no a invocación HTTP directa al contenedor.
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Scheduler job creado; target = Execute API del Job correcto.
+  Done Evidence:
+
+* 2.2.2 — Configurar cadencia de disparo
+  Cron expression para la cadencia indicativa (lunes 01:00 AM), declarada como parámetro de despliegue (D-14.2).
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Cron configurado; documentado explícitamente como parámetro, no regla de negocio.
+  Done Evidence:
+
+* 2.2.3 — Identidad de invocación del Scheduler (least-privilege)
+  Crear/asignar una SA de invocación distinta de la SA runtime del Job. Asignar el permiso exacto run.jobs.run scoped exclusivamente al recurso del Job.
+  Status: [BACKLOG]
+  Done Criteria:
+  1. SA de invocación distinta de la SA del Job confirmada.
+  2. Permiso run.jobs.run garantizado a la SA y scoped al Job específico, sin permisos a nivel de proyecto ni acceso HTTP genérico.
+  Done Evidence:
+
+### Fase 2.3 — Autenticación de la Service Account contra Shared Drive
+
+* 2.3.1 — Crear/identificar la service account del Job
+  Identidad runtime que utilizará el pipeline para la lectura en Drive y escritura en BQ.
+  Status: [BACKLOG]
+  Done Criteria:
+  1. SA existe y está asociada como identidad runtime del Job de 2.1.3.
+  Done Evidence:
+
+* 2.3.2 — Agregar la SA como miembro de la Shared Drive
+  Rol de lectura, sin domain-wide delegation (D-14.4).
+  Status: [BACKLOG]
+  Done Criteria:
+  1. SA aparece como miembro directo de la Shared Drive con rol de lectura.
+  2. Domain-wide delegation explícitamente NO configurada.
+  Done Evidence:
+
+* 2.3.3 — Confirmar ausencia de sincronización forzada a GCS
+  Verificar que el acceso es directo vía Drive API (D-14.4).
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Ningún mecanismo de sync automático a GCS está configurado.
+  Done Evidence:
+
+### Fase 2.4 — Provisión de datasets BigQuery (container-level, D-10.4)
+
+* 2.4.1 — Crear dataset de staging oculto (pr_staging)
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Dataset pr_staging existe, ubicación/proyecto correctos.
+  Done Evidence:
+
+* 2.4.2 — Crear dataset de servicio (pr_serving)
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Dataset pr_serving existe, separado físicamente de pr_staging.
+  Done Evidence:
+
+* 2.4.3 — Aplicar IAM base sobre ambos datasets
+  SA del Job: rol de escritura exclusivamente sobre pr_staging. Ningún otro principal con acceso en esta fase.
+  Status: [BACKLOG]
+  Done Criteria:
+  1. SA del Job tiene write sobre pr_staging únicamente.
+  2. pr_serving no tiene ningún grant más allá de admin del proyecto.
+  Done Evidence:
+
+* 2.4.4 — Documentar la frontera container/contenido Fase2/Fase4
+  Registrar explícitamente que este Paso no crea tablas, vistas, ni el link de authorized views (D-10.4, propiedad de Fase 4).
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Nota de frontera escrita y referenciada desde el roadmap de Fase 4.
+  Done Evidence:
+
+### Fase 2.5 — Verificación de aprovisionamiento y contrato de salida
+
+* 2.5.1 — Prueba real de lectura de Shared Drive vía la SA
+  Listar el contenido de una carpeta de prueba genérica, validando que la Drive API responde correctamente.
+  Status: [BACKLOG]
+  Done Criteria:
+  1. La SA lista contenido real de una carpeta vía Drive API.
+  2. Explícitamente fuera de scope: cualquier lógica de R31/R32.
+  Done Evidence:
+
+* 2.5.2 — Verificar configuración física de ambos datasets
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Ubicación, nombre, y proyecto de pr_staging y pr_serving verificados.
+  Done Evidence:
+
+* 2.5.3 — Smoke test de la cadena completa Scheduler → Job
+  Disparo manual del Scheduler para confirmar la resolución exitosa del flujo y los permisos ajustados en 2.2.3.
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Scheduler invoca el Job exitosamente vía la Execute API sin error de permisos.
+  Done Evidence:
+
+* 2.5.4 — Declarar el contrato de salida de Fase 2
+  Por escrito: la única precondición que Fase 3 puede asumir cerrada es "SA con lectura confirmada sobre Shared Drive."
+  Status: [BACKLOG]
+  Done Criteria:
+  1. Contrato de salida escrito y referenciado desde la entrada de Fase 3.
   Done Evidence:
