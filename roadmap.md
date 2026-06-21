@@ -72,3 +72,43 @@ Entregables: pipeline Polars ejecutable end-to-end sobre archivos fixture;
   Entregables: esquema explícito de stg_matched (crudas + _norm que T1/T2/T3
     requieren); esquema de recon_nomatch; stub de cola de anomalías;
     contrato de salida documentado. run_date NO se estampa aquí (Fase 4).
+
+## FASE 2 — GCP Infrastructure Provisioning
+
+Objetivo: Aprovisionar y configurar la infraestructura base en GCP (Job, Scheduler, 
+  Artifact Registry, Datasets) para la ejecución autónoma del pipeline, estableciendo
+  identidades (least-privilege) y observabilidad, sirviendo de base comprobada para Fase 3.
+Entregables: APIs habilitadas y repositorio AR creado; Cloud Run Job y Scheduler
+  vinculados con roles estrictos; SA del Job con lectura en Shared Drive; Datasets 
+  físicos en BQ creados; contrato de salida validado y documentado.
+
+2.1 Aprovisionamiento base y Despliegue del Cloud Run Job
+  Objetivo: Provisionar el repositorio de imágenes, el Job como recurso 
+    run-to-completion (D-14.1) con recursos validados contra D-14.3, y
+    establecer su observabilidad básica.
+  Entregables: APIs habilitadas (incluyendo Drive y Artifact Registry);
+    repositorio AR creado; Job creado en el proyecto/región target; manifest
+    documentado; alerta de fallos de ejecución configurada; smoke test.
+
+2.2 Configuración del disparo programado
+  Objetivo: Cloud Scheduler invocando la Execute API del Job (D-14.2), con 
+    identidad de invocación least-privilege y permisos explícitos de ejecución.
+  Entregables: Scheduler job creado; cadencia configurada; SA de invocación 
+    con permiso run.jobs.run scoped al Job.
+
+2.3 Autenticación de la Service Account contra Shared Drive
+  Objetivo: SA del Job como miembro directo de la Shared Drive (D-14.4), 
+    sin domain-wide delegation, sin sync forzada a GCS.
+  Entregables: SA creada/identificada; membership confirmado.
+
+2.4 Provisión de datasets BigQuery (container-level, D-10.4)
+  Objetivo: Crear los dos datasets físicos (staging oculto, servicio) con IAM base. 
+    NO crea tablas, vistas, ni el link de authorized views — propiedad de Fase 4.
+  Entregables: pr_staging y pr_serving creados; IAM restringido a la SA del Job 
+    (write en staging únicamente); frontera Fase2/Fase4 documentada.
+
+2.5 Verificación de aprovisionamiento y contrato de salida
+  Objetivo: Convertir "los recursos existen" en "la cadena funciona extremo a extremo", 
+    y declarar explícitamente qué puede asumir Fase 3 como cerrado. No incluye lógica de R31/R32.
+  Entregables: lectura real de Drive confirmada vía la SA; config física de datasets verificada; 
+    smoke test Scheduler→Job completo; contrato de salida declarado.
