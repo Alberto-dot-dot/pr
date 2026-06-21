@@ -2,8 +2,25 @@
 
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
 
-**Versión:** S14 → S15, fecha 2026-06-20.
-**Sesión de origen:** Bloque 3 (Arquitectura + Stack) — cierre de #13, último PENDIENTE crítico del bloque. Nueva subsección §5.11 (Contrato de Presencia — Tabla Mapeo de Tipologías). Decisiones: la Tabla Mapeo de Tipologías no tiene mecanismo de vigencia por versión — archivo único por obra, sobrescrito in situ, sin estructura de carpetas por fecha (descarta la analogía con R23–R26 en ese punto); ruta de la carpeta global ("Tipologias Obras") declarada como valor de configuración único, estructuralmente distinto de programas_vigentes por grano (R31); match de archivo por obra vía nombre normalizado (pipeline 5.1) contra obra_norm, divergencia deliberada de la postura literal de R18 (R32); gate de accesibilidad de la carpeta global, homologado a R16, abort global con log explícito (R31); gate de presencia por obra ante cero coincidencias o coincidencia ambigua — mismo tratamiento para ambas — exclusión acotada a esa obra (todas sus macro_partidas), las demás obras continúan, solo log de ejecución, sin artefacto persistido (R32), divergencia deliberada de la postura global de R25/R26. Con esto, Bloque 3 cierra en su totalidad. Bloque 4 (Roadmap) queda desbloqueado por la regla de gating de §7.
+**Versión:** S15 → S16, fecha 2026-06-21.
+**Sesión de origen:** Bloque 4 (Roadmap por fases) — apertura formal del bloque. Estructura de dos
+niveles fijada (roadmap.md descriptivo Fase/Paso, development.md atómico Fase.Paso.N con Status/Done
+Criteria/Done Evidence, foreign key por truncamiento del último segmento) — mismo patrón usado en el
+proyecto MIDAS. Decisión arquitectónica que gobierna el roadmap: el corte de motor de D-10.3 (Polars
+hasta R8, BigQuery agregación/vistas) determina el particionado en Fases — pipeline local, provisión
+GCP, resolución de archivo en vivo, agregación/vistas BigQuery, y cutover de consumidores son fases
+separadas, no un conteo arbitrario. Cierre del rol del agente ejecutor: Claude Code es asistente de
+desarrollo (pair-programmer, Alberto ejecuta/commitea), sin rol en el runtime de producción — el
+Cloud Run Job + Scheduler es autónomo (ya cerrado en Bloque 3, D-14.1/D-14.2); resuelve la
+consideración abierta heredada de S15. Fase 0 (Local Repo & Scaffolding) cerrada en su totalidad a
+nivel roadmap y atómico (11 tareas, [BACKLOG], no ejecutadas). Fase 1 (Polars Core Pipeline, local)
+descompuesta a nivel atómico en su totalidad (8 Pasos, todas las reglas de fila Polars-owned del
+scope declarado). Bloque 6 (CLAUDE.md) confirmado como bloque activo, no condicional: hereda el
+esqueleto de gobernanza de MIDAS (MODE, Task Protocol, Git Practices, Commit/Merge gates, Directory
+Access Restriction), adaptado a PR (sin Colab, Cloud Run Job, admin único); debe secuenciarse después
+de que el roadmap de Bloque 4 esté completamente descompuesto y antes de iniciar Bloque 5. Corrección
+de §7: orden de bloques enmendado de B4→B5→B6 a B4→B6→B5.
+
 **Módulo en foco:** PR — scope-lock activo (un solo módulo hasta PENDIENTE crítico vacío)
 **Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada S9/S10/S14), R9–R10, R11 (enmendada S10), R12–R22, R23–R26 (S11, cierre #11), R27 (S13, §5.9, cierre parcial #10), R28–R30 (S14, nuevas, §5.10, cierre total #10), R31–R32 (S15, nuevas, §5.11, cierre #13), R6.1 borde. R4 retirada en S9. R15 enmendada en S10: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]; enmendada nuevamente en S13 (R27): se agrega run_date. EN DISPUTA vacío desde S10. PENDIENTE crítico vacío desde S15.
 
@@ -765,12 +782,27 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
 
 - **Bloque 3 — Arquitectura + Stack** (archivo) ← **CERRADO (S15)**. #11 cerrado (S11, R23–R26). #14 cerrado (S12, 5.8). #10 cerrado en su totalidad (S11, 5.7; S12, D-14.4; S13, R27/§5.9; S14, R28–R30/§5.10 + D-10.4). #13 cerrado (S15, R31–R32/§5.11). Resuelve D y G en su totalidad. Sin PENDIENTE crítico restante en este bloque.
 
-- **Bloque 4 — Roadmap por fases** (archivo) ← **DESBLOQUEADO (S15)**, no iniciado. Depende de B2 + B3, ambos cerrados. Checkpoints críticos candidatos: integridad de llaves con join sin pérdida; resolución determinista de versión vigente
+- **Bloque 4 — Roadmap por fases** (archivo) ← **EN CURSO (S16)**. Depende de B2 + B3, ambos cerrados.
+  Estructura fijada: dos niveles (roadmap.md Fase/Paso descriptivo, development.md atómico con Status/
+  Done Criteria/Done Evidence). Partición de Fases gobernada por el corte de motor D-10.3, no por conteo
+  arbitrario. Fase 0 cerrada (roadmap + 11 tareas atómicas). Fase 1 descompuesta a nivel atómico (8
+  Pasos). Fases 2–5 declaradas a nivel de tabla, sin desglose de Paso ni tareas atómicas — PENDIENTE
+  de este bloque, no crítico para el avance de Fase 1.
 
-- **Bloque 5 — Development Fase 1** (archivo). Depende de B4.
+- **Bloque 6 — CLAUDE.md** (archivo) ← **ACTIVO (S16)**, no condicional. Enmienda: se retira la
+  condicionalidad declarada en S15 — la arquitectura sin Colab y el contrato single-admin de PR sí
+  exigen gobernanza propia, confirmado en S16. Hereda el esqueleto de MIDAS (MODE, Task Protocol, Git
+  Practices, Commit/Merge gates, Directory Access Restriction), adaptado a runtime Cloud Run Job +
+  Scheduler, sin Colab. Archivo standalone en la raíz del repo, NO embebido en este spec (mantiene
+  liviano el contexto del agente). Secuenciamiento: después de que Bloque 4 complete su descomposición
+  atómica (su sección de Checkpoints Críticos lo requiere) y antes de iniciar Bloque 5. Depende de B4.
 
-- **Bloque 6 — CLAUDE.md** (condicional). Solo si arquitectura sin Colab y contrato de PR exigen cambios de gobernanza.
----
+- **Bloque 5 — Development Fase 1** (archivo). Depende de B4 y de B6 (orden enmendado: B4→B6→B5,
+  no B4→B5→B6 como se declaraba en S15 — CLAUDE.md debe existir antes de que la ejecución de Fase 1
+  empiece a operar bajo su Task Protocol).
+
+
+---   
  
 ## 8. LEDGER CANÓNICO
  
@@ -1019,6 +1051,63 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   del Job, sin artefacto persistido (R32) — divergencia deliberada de la
   postura global de R25/R26. [G] (§5.11, R31–R32, S15)
 
+  - Estructura de Bloque 4 (Roadmap por fases): dos niveles obligatorios y simultáneos — roadmap.md
+  (Fase/Paso, descriptivo: Nombre, Objetivo, Entregables, sin Done Criteria a este nivel) y
+  development.md (atómico, Fase.Paso.N, Status del enum cerrado, Done Criteria, Done Evidence;
+  foreign key = truncar el último segmento del ID). Mismo patrón que MIDAS. Capa de Paso y capa
+  atómica no se fusionan: error de capa detectado y corregido en S16 (Done Criteria no se adjunta
+  directamente a un Paso).
+
+- Partición de Fases del roadmap gobernada por el corte de motor D-10.3 (Bloque 3): Fase 0 (scaffolding
+  local, sin GCP), Fase 1 (pipeline Polars local, reglas de fila hasta R8, testeable con fixtures sin
+  Drive/BigQuery), Fase 2 (provisión GCP — Cloud Run Job, Scheduler, auth Drive, datasets BigQuery),
+  Fase 3 (resolución de archivo en vivo contra Drive — R23–R26/R31–R32, depende de la service account
+  de Fase 2), Fase 4 (agregación y vistas de servicio BigQuery — lado productor, incluye partición de
+  dataset de R29 y estampado de run_date de R27), Fase 5 (habilitación de consumidores y cutover — IAM
+  grant de R29, conector R28, retiro de PQ/M legado).
+
+- Rol del agente ejecutor de IA resuelto (cierra la consideración abierta heredada de S15): Claude
+  Code es par de desarrollo en tiempo de construcción (escribe código, Alberto ejecuta/commitea, asiste
+  en debugging); cero rol en el runtime de producción. El Cloud Run Job + Cloud Scheduler es totalmente
+  autónomo en producción (ya cerrado en Bloque 3, D-14.1/D-14.2) — esta resolución no reabre esas
+  decisiones, solo fija el momento/rol de introducción del agente dentro del roadmap (no es una
+  restricción a nivel de Paso 0 ni de ningún paso posterior; es transversal al ciclo de desarrollo).
+
+- Fase 0 (Local Repo & Scaffolding) cerrada en su totalidad: roadmap (Nombre/Objetivo/Entregables) +
+  11 tareas atómicas (0.1.1–0.1.11), todas [BACKLOG], ninguna ejecutada. Decisiones de convención
+  cerradas dentro de esta fase: nombre de paquete `pr` (sin rename, coincide con el repo); gestor de
+  dependencias requirements.txt con pines exactos (==), elegido sobre Poetry/uv para mitigar drift en
+  un job de producción desatendido semanal; layout src/ (src/pr/) con pyproject.toml mínimo
+  ([build-system]/[project], sin Poetry) requerido para instalación editable — gap real detectado y
+  corregido en sesión; .python-version fija la versión del interprete, misma justificación que el
+  pineo de librerías; IDE VS Code, .vscode/extensions.json de Fase 0 limitado a ms-python.python y
+  ms-python.vscode-pylance — extensión Google Cloud Code deliberadamente diferida a Fase 2, sin
+  tooling de GCP antes de su fase correspondiente.
+
+- Fase 1 (Polars Core Pipeline, local) descompuesta a nivel atómico en su totalidad: 8 Pasos (1.1
+  Test Fixtures, 1.2 Structural Ingestion Gates & Type Contracts incluyendo R13, 1.3 USAR Gate, 1.4
+  Normalization & Obra Derivation incluyendo R3/R3.1, 1.5 Identity Hashing, 1.6 Tipología Join &
+  Disposition, 1.7 FECHA Handling, 1.8 stg_matched Assembly & Row-Level Output Contract). Auditoría de
+  cobertura detectó y corrigió tres huecos del borrador original: R13 y R3/R3.1 estaban en el scope
+  declarado de Fase 1 sin Paso asignado (resuelto, foldeados en 1.2 y 1.4 respectivamente); no existía
+  un Paso terminal que fijara el esquema del frame de salida row-level (resuelto, nuevo Paso 1.8).
+  R23–R26/R31–R32 (resolución de archivo vigente) explícitamente excluidas de Fase 1 — Fase 1 opera
+  solo contra fixtures entregadas, no contra Drive en vivo (eso es Fase 3, después de que Fase 2
+  provisione la service account). PENDIENTE no bloqueante de Fase 1: esquema fino de la cola de
+  anomalías (R2/R6.1/R22) — el spec ya lo difiere; Fase 1 solo fija el ruteo hacia ella, no su forma
+  final. Distinto de recon_nomatch (R8), que sí tiene esquema mínimo cerrado.
+
+- Metodología de Done Criteria a nivel de roadmap fijada: tareas atómicas usan Done Criteria de tipo
+  checklist + Done Evidence — no el test DADO/CUANDO/ENTONCES, reservado exclusivamente para reglas
+  de negocio de Bloques 1–3. Modo Socrático reservado para contradicciones estructurales genuinas
+  (lo que rompería o entraría en conflicto con una decisión ya cerrada); convenciones de bajo riesgo
+  y reversibles (nombrado, elección de tooling) se proponen directas en modo Estructurador y se
+  confirman en una sola pasada, sin interrogatorio uno por uno.
+
+- Enmienda a §7: orden de bloques corregido de B4→B5→B6 a B4→B6→B5. Bloque 6 (CLAUDE.md) reclasificado
+  de "condicional" a activo/confirmado — la condicionalidad declarada en S15 ("solo si arquitectura
+  sin Colab y contrato de PR exigen cambios de gobernanza") se resuelve afirmativamente en S16.
+
 
 ### PARCIALMENTE DEFINIDO
 - Canonicalización de `""` vs `null` en ESTATUS C.CLOUD. Ambos valores ya
@@ -1085,3 +1174,20 @@ Corrección dentro de S10: las filas NO_MATCH se excluyen también de la Tabla 3
 **S14 — 2026-06-20**: Bloque 3. Foco: cierre total de #10 (ambos sub-items restantes). Nueva subsección §5.10 (Contrato de Consumo Externo — Sheets / Power Query / Aislamiento de Datasets). Decisiones: (1) R28 — mecanismo de conexión: modo pull exclusivo, sin componente intermedio que materialice o escriba datos (Connected Sheets para T3, Power Query para T1/T2), refresh manual por el analista, autenticación bajo identidad individual de Google; no modifica D-14.5. (2) R29 — partición de datasets: stg_matched y recon_nomatch en un dataset de staging oculto; T1, T2 y T3 como vistas autorizadas en un dataset de servicio separado; rol IAM de analista otorgado exclusivamente sobre el dataset de servicio — registrado también como D-10.4 en §5.7. Enmienda: se retira la restricción provisional "los analistas nunca acceden a T1/T2" (introducida y descartada dentro de la misma sesión, al detectarse contradicción con el flujo real de Power Query/Excel por-obra que alimenta a CÓMPUTO). Racional de Alberto: simplicidad operativa, datos no sensibles; consecuencia aceptada — visibilidad cross-obra en T1/T2, filtrado por obra diferido al dashboard/CÓMPUTO. (3) Amendment a R8: destino fino de recon_nomatch — dataset de staging oculto, distribución exclusiva del dueño del sistema. (4) R30 — motor y destino del artefacto residual de R11: vista de BigQuery simétrica a T1/T2, complementaria a R9∪R10, declarada dentro del dataset de staging (no en el de servicio) para no heredar el grant IAM de analistas; distribución exclusiva del dueño del sistema, en simetría con recon_nomatch; no modifica D-10.3, el motor de R9/R10 permanece en BigQuery. Auditoría de proceso: se identificó y corrigió una contradicción textual en D-10.3 (§5.7), que listaba a R11 como regla "consolidada en Polars" — corrección de redacción, no de decisión: el motor de evaluación de membresía R9/R10 fue y sigue siendo de BigQuery; solo el artefacto resultante (la vista residual) se ubica en el dataset de staging por razones de aislamiento de acceso, no porque Polars lo procese. #10 cierra en su totalidad. Único PENDIENTE crítico restante en Bloque 3: #13. Próximo foco: #13 (estructura de carpeta y resolución de "vigente" para la Tabla Mapeo de Tipologías) — cierra Bloque 3 si se resuelve.
 
 **S15 — 2026-06-20**: Bloque 3. Foco: #13, último PENDIENTE crítico del bloque — estructura de carpeta y resolución de "vigente" para la Tabla Mapeo de Tipologías. Auditoría inicial: se forzó la confirmación estructural antes de aceptar la analogía con R23–R26 (#11); resultado: no hay versionado por fecha, es un archivo único y estático por obra, sobrescrito in situ — el problema real es de presencia/identificación, no de selección temporal. Nueva subsección §5.11 (Contrato de Presencia — Tabla Mapeo de Tipologías). Decisiones: (1) carpeta global ("Tipologias Obras")  declarada como valor de configuración único, fuera del grano de `programas_vigentes` (grain mismatch identificado y resuelto: el folder path es una constante de sistema, no varía por (obra, macro_partida)). (2) Convención de nombre `{obra}_mapeo_tipologias`; match contra `obra_norm` ejecutado sobre el nombre de archivo normalizado (pipeline 5.1) — divergencia deliberada de la postura literal de R18, justificada porque el nombre de archivo es tipeado libremente por el analista. (3) R31 — gate de accesibilidad de la carpeta global, homologado a R16: carpeta inalcanzable aborta la corrida completa, log explícito de la causa específica; distingue una falla de configuración de sistema de una fallade archivo individual. (4) R32 — g ate de presencia por obra: cerocoincidencias y coincidencia ambigua (más de un archivo normaliza al mismo nombre esperado) reciben idéntico tratamiento — exclusión de todas las macro_partidas de la obra afectada en la corrida actual, las demás obras continúan sin abort global, solo log de ejecución del Job, sin artefacto persistido. Divergencia deliberada respecto a R25/R26 (que homologan el mismo tipo de evento a abort global): aquí la falla del artefacto de mapeo se acota a su obra, no se propaga. Con el cierre de #13, Bloque 3m cierra en su totalidad — sin PENDIENTE crítico restante. Bloque 4 (Roadmap por fases) queda desbloqueado por la regla de gating de §7. Próximo foco: decisión de Alberto sobre si abrir Bloque 4 (Roadmap) en la próxima sesión, o realizar una revisión de cierre de Bloque 3 antes de avanzar.
+
+**S16 — 2026-06-21**: Bloque 4. Apertura formal del bloque tras el desbloqueo de S15. Fijación de la
+estructura de dos niveles (roadmap.md descriptivo + development.md atómico), espejada del proyecto
+MIDAS; corrección de un error de capa detectado en sesión (Done Criteria no se adjunta al nivel Paso).
+Partición de Fases (0–5) fijada por el corte de motor D-10.3, no por conteo arbitrario — revisada dos
+veces en sesión (GCP promovido a Fase propia; R29 dividido entre Fase 4 y Fase 5). Resuelta la
+consideración abierta heredada de S15 sobre el momento de introducción del agente ejecutor: Claude
+Code es asistente de desarrollo sin rol en el runtime de producción (que permanece autónomo, Bloque 3
+sin cambios); resolución transversal, no atada a un Paso específico. Fase 0 cerrada en su totalidad
+(roadmap + 11 tareas atómicas, decisiones de convención: paquete `pr`, requirements.txt pineado, src-
+layout con pyproject.toml mínimo, .python-version, VS Code con extensiones acotadas a Fase 0). Fase 1
+descompuesta a nivel atómico en su totalidad (8 Pasos); auditoría de cobertura detectó y corrigió tres
+huecos (R13 y R3/R3.1 huérfanos, ausencia de Paso terminal de contrato de salida) antes de generar las
+tareas atómicas. Bloque 6 (CLAUDE.md) reclasificado de condicional a activo, secuenciado entre B4 y
+B5 (enmienda de §7: B4→B6→B5). Próximo foco: descomposición de Fase 2 (GCP Infrastructure
+Provisioning) siguiendo el mismo patrón de dos niveles; pendiente de bloque, no crítico: desglose de
+Fases 2–5 restantes.
