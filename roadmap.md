@@ -215,3 +215,33 @@ validados ya fluyen al landing point.
 - Contrato de salida documentado: al cierre de Fase 3, `stg_matched` / `recon_nomatch`
   contienen datos vivos y validados; Fase 4 sin dependencia residual de Fase 3.
   
+## FASE 4 — BigQuery Aggregation & Service Views (producer side)
+Owns content inside pr_staging/pr_serving (containers provisioned in Fase 2, D-10.4).
+
+### Paso 4.1 — Service Aggregation Views (T1, T2)
+  Objetivo: define the two aggregation views in pr_serving — Append PR Finalizado
+    (R4-T1, routing R9) and Append PR Programado (R4-T2, routing R10) — counting
+    MATCHED rows, run_date as a GROUP BY member.
+  Entregables: T1 view def, T2 view def (pr_serving).
+
+### Paso 4.2 — Service Denormalized View (T3)
+  Objetivo: define the row-level passthrough view in pr_serving — raw values
+    (R15/R12/R20), membership filter R9∪R10, run_date passthrough.
+  Entregables: T3 view def (pr_serving).
+
+### Paso 4.3 — Residual Exception View (R30, row-level)
+  Objetivo: expose the R11 residual (MATCHED rows whose estatus_c_cloud_norm
+    ∉ R9∪R10) as a row-level view in pr_staging, raw identifying columns for
+    upstream correction, isolated from the serving dataset.
+  Entregables: R30 residual view def (pr_staging).
+
+### Paso 4.4 — Authorized-View Link (serving → staging)
+  Objetivo: authorize T1/T2/T3 against pr_staging so the serving views can read
+    their source; confirm queryability; confirm R30 is excluded from any outward grant.
+  Entregables: authorized-view grant on pr_staging covering T1/T2/T3 only.
+
+### Paso 4.5 — Terminal Live Verification & Exit Contract
+  Objetivo: confirm T1/T2/T3 + R30 return correct results against the live
+    stg_matched written in Fase 3; confirm run_date is passthrough-only; declare
+    the Fase 4 → Fase 5 exit contract with no residual dependency.
+  Entregables: verification record; exit contract to Fase 5.
