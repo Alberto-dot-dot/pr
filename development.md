@@ -418,17 +418,29 @@ Done Evidence:
 
 ### Fase 1.8 — stg_matched Assembly & Row-Level Output Contract
 
-* 1.8.1 — Define and pin stg_matched schema
-  Enumerate the exact column set Polars hands to Fase 4: raw columns
-  required by T3 (obra, estatus=ESTATUS C.CLOUD raw, nombre_actividad=
-  ACTIVIDAD raw, tipologia raw, fecha raw), _norm columns required for
-  routing/aggregation (ESTATUS_C_CLOUD_norm, obra_norm, etc.), id_actividad,
-  id_tipologia, and N1..N5. run_date is excluded (stamped in Fase 4, R27).
+* 1.8.1 — Define and pin stg_matched local producer schema
+  The Fase 1 Polars frame — the LOCAL, fixture-validated face of stg_matched,
+  before the Fase 3 write boundary. Nine columns, Arrow types:
+    obra (Utf8), obra_norm (Utf8), estatus_c_cloud (Utf8),
+    estatus_c_cloud_norm (Utf8), nombre_actividad (Utf8),
+    id_actividad (UInt64), tipologia (Utf8), id_tipologia (UInt64),
+    fecha (Date).
+  Surviving _norm columns are exactly obra_norm and estatus_c_cloud_norm
+  (BigQuery still evaluates these: GROUP BY key, R9/R10 predicate). N1..N5
+  (raw and _norm), actividad_norm, tipologia_norm are NOT present — consumed
+  upstream (join R7, hashes R1/R6), no downstream reader (S19).
+  run_date and the STRING id representation are NOT in this frame: both are
+  Fase 3 write-boundary transforms (3.4.3, R27/D-14.5). ids are UInt64 here.
   Status: [BACKLOG]
   Done Criteria:
-  1. Every column downstream phases consume is present and typed.
-  2. run_date is absent (deferred to the write boundary, Fase 4).
-  3. The schema is documented as the producer-side contract for Fase 4.
+  1. The 9-column local frame is documented exactly as above, Arrow types.
+  2. Surviving _norm set = {obra_norm, estatus_c_cloud_norm} only; N1..N5,
+     actividad_norm, tipologia_norm explicitly absent.
+  3. run_date absent from the local frame; documented as the Fase 3
+     write-boundary injection (3.4.3), not Fase 1, not Fase 4.
+  4. ids are UInt64; STRING cast documented as a Fase 3 write-boundary transform.
+  5. This 9-column frame is the producer contract that the Fase 3 write boundary
+     converts to the 10-column BigQuery stg_matched table consumed by Fase 4.
   Done Evidence:
 
 * 1.8.2 — Assemble MATCHED output frame
@@ -708,7 +720,7 @@ Done Criteria:
 Done Evidence:
 
 
-### Phase 3.3
+### Paso 3.3
 
 * 3.3.1 — R32: normalized per-obra mapeo filename match
 Status: [BACKLOG]
@@ -779,3 +791,100 @@ Done Criteria:
 2. Confirms Fase 4 (aggregation/views) has no residual dependency on Fase 3 resolution logic — it consumes the staging tables only.
 3. The two-track gate behavior and the per-obra exclusion are recorded as verified, not assumed.
 Done Evidence:
+
+### Paso 4.1
+
+* 4.1.1 — T1 view (Append PR Finalizado)
+Done Criteria:
+1. View in pr_serving; reads stg_matched (pr_staging) only.
+2. WHERE estatus_c_cloud_norm IN ('finalizada','2da_revision','con_fallas',
+   'revisada','en_proceso') (R9). All members non-null literals.
+3. GROUP BY obra_norm, id_actividad, id_tipologia, run_date (R4-T1 + R27).
+4. SELECT obra_norm AS obra, id_actividad, id_tipologia,
+   COUNT(*) AS count_unidades, run_date.
+5. run_date passthrough — not re-stamped or transformed (R27).
+6. Output types: obra STRING, ids STRING (pending id-type decision),
+   count_unidades INT64, run_date DATE.
+
+* 4.1.2 — T2 view (Append PR Programado)
+Done Criteria:
+1. View in pr_serving; reads stg_matched only.
+2. WHERE estatus_c_cloud_norm IN ('nueva','0','') OR estatus_c_cloud_norm IS NULL
+   (R10 — NULL and '' are explicit R10 members; the IS NULL arm is required,
+   a bare IN-list silently drops them).
+3. GROUP BY obra_norm, id_actividad, id_tipologia, fecha, run_date (R4-T2 + R27).
+4. SELECT obra_norm AS obra, id_actividad, id_tipologia, fecha,
+   COUNT(*) AS count_unidades, run_date.
+5. count_unidades distribution across fecha preserved, never collapsed (R4-T2).
+6. fecha non-null by upstream guarantee (R22); types as 4.1.1 + fecha DATE.
+
+
+* 4.2.1 — T3 view (denormalized report)
+Done Criteria:
+1. View in pr_serving; reads stg_matched only; row-level, no aggregation (R15/R20).
+2. WHERE row is routed to R9∪R10 — equivalently NOT residual:
+   estatus_c_cloud_norm IN (<R9 ∪ R10 non-null set>) OR estatus_c_cloud_norm IS NULL.
+3. SELECT obra, estatus_c_cloud AS estatus, nombre_actividad, tipologia, fecha,
+   run_date — all raw passthrough (R12/R15/R20), run_date metadata.
+4. No normalization/transformation on any selected column.
+5. Types: obra/estatus/nombre_actividad/tipologia STRING; fecha DATE; run_date DATE.
+
+* 4.3.1 — R30 residual exception view (row-level)
+Done Criteria:
+1. View in pr_staging — NOT pr_serving (isolation perimeter, R29/R30); never
+   added to the authorized-view grant.
+2. Reads stg_matched only; row-level, raw identifying columns (symmetric to T3).
+3. WHERE estatus_c_cloud_norm IS NOT NULL
+   AND estatus_c_cloud_norm NOT IN ('finalizada','2da_revision','con_fallas',
+   'revisada','en_proceso','nueva','0','').
+   The IS NOT NULL guard is mandatory: NULL is an R10 member (Programado), not
+   residual; a bare NOT IN over NULL would mis-route it (R11 = complement of R9∪R10).
+4. SELECT obra, estatus_c_cloud AS estatus, nombre_actividad, tipologia, fecha,
+   run_date (raw, for upstream correction by the system owner).
+5. No persisted artifact beyond the view; the view is the sole residual surface.
+
+* 4.4.1 — Authorize serving views against pr_staging
+Done Criteria:
+1. T1, T2, T3 (pr_serving) added to pr_staging's authorized-views access list.
+2. R30 NOT added — same-dataset view, no cross-dataset grant, must not be exposed.
+3. Grant covers exactly the three serving views, nothing else.
+
+* 4.4.2 — Confirm authorization effective
+Done Criteria:
+1. T1/T2/T3 each return rows on query — the transient unqueryable window is cleared.
+2. pr_staging access list contains only T1/T2/T3 as authorized views; no analyst
+   principal present (analyst IAM is Fase 5, on pr_serving).
+3. R30 confirmed absent from any outward grant.
+
+* 4.5.1 — Verify T1/T2 aggregation against live stg_matched
+Done Criteria:
+1. T1 grain = (obra_norm, id_actividad, id_tipologia, run_date); T2 = + fecha;
+   no duplicate grain rows.
+2. count_unidades = row count per group; sums reconcile to live source counts.
+3. run_date single value per snapshot, present in the grain.
+
+* 4.5.2 — Verify T3 passthrough against live stg_matched
+Done Criteria:
+1. Row count = MATCHED rows routed to R9∪R10; residual rows absent.
+2. Raw values byte-match source (no normalization leaked).
+3. fecha and run_date both present, distinct, unrelated (R27 vs R19–R22).
+
+* 4.5.3 — Verify R30 residual + routing-partition exhaustiveness
+Done Criteria:
+1. R30 captures exactly MATCHED rows with non-null unrecognized
+   estatus_c_cloud_norm; NULL/'' rows absent (they are R10).
+2. Routing partition is exhaustive and disjoint: every MATCHED row falls into
+   exactly one of {R9, R10, residual}; T1∪T2 row population + R30 row population
+   = total MATCHED rows. No row lost, no double-count.
+3. R30 not reachable via the serving grant.
+
+* 4.5.4 — Verify run_date passthrough-only
+Done Criteria:
+1. run_date in every view equals the Polars-stamped value in stg_matched; no view
+   re-stamps or transforms it (R27; stamping was Fase 3, 3.4.3).
+
+* 4.5.5 — Exit contract to Fase 5
+Done Criteria:
+1. T1/T2/T3 + R30 validated against live data.
+2. No residual Fase 4 dependency; remaining wiring (analyst IAM grant R29,
+   PQ/Connected Sheets connectors R28, PQ/M retirement) is Fase 5 scope only.
