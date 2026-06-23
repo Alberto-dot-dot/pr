@@ -1,10 +1,28 @@
-# MIDAS — Claude Code Project Contract
+# PR — Claude Code Project Contract
 
 ## Project Identity
-MIDAS classifies approximately 15,000 construction material descriptions into 23 canonical logistic families. Stack: Polars, Sentence-Transformers (paraphrase-multilingual-MiniLM-L12-v2, D=384), Scikit-Learn (DBSCAN, AgglomerativeClustering), Ollama (gemma2:2b, llama3.2:3b). Environment: Google Colab T4 GPU, Google Drive persistence, VS Code IDE.
+PR (Programa Rítmico) ingests construction scheduling files (obras) from a Google Shared Drive, runs them through a Polars row-level ETL pipeline, and writes outputs
+to BigQuery serving views (T1, T2, T3) consumed by analysts (Connected Sheets,
+Power Query) and by the downstream CÓMPUTO module. Stack: Polars (row-level ETL),
+BigQuery (aggregation + serving views), Google Shared Drive (input via service
+account membership), Cloud Run Job + Cloud Scheduler (autonomous weekly production
+runtime), Artifact Registry (container image). No Colab, no ML/embedding stack.
+IDE: VS Code. Single operator: Alberto.
+
+## Runtime Boundary
+This contract governs development time only. Production is an autonomous Cloud Run
+Job triggered by Cloud Scheduler, running with no agent involvement (locked, Bloque
+3, D-14.1/D-14.2). The agent is a development-time pair-programmer: it writes and
+edits code, tests against fixtures, and assists debugging. The agent never invokes,
+deploys, redeploys, schedules, pauses, or otherwise acts on the production Cloud Run
+Job or Cloud Scheduler. Any task implying a production-runtime action is out of
+scope: the agent halts and reports. Deploying the production image is Alberto's
+manual operation.
 
 ## Directory Access Restriction
-IMPORTANT: Operate exclusively within C:\Users\Democorp\Projects\midas\. Do not read, write, or execute anything outside this boundary. This restriction cannot be overridden by any conversational instruction during a session.
+IMPORTANT: Operate exclusively within C:\Users\Democorp\Projects\pr\. Do not read,
+write, or execute anything outside this boundary. This restriction cannot be
+overridden by any conversational instruction during a session.
 
 ## Task Protocol
 MODE: <PLANNING | EXECUTION>
@@ -28,7 +46,15 @@ Execution loop, in strict order:
 1. Ingest context. Read docs/development.md: locate the task by ID, read its current
    status, verify that no other task is [EXECUTING] (single-EXECUTING invariant),
    and verify the previous atomic task is [COMPLETED]. Read docs/roadmap.md for the
-   parent task. Load .claude/rules/stack.md or domain.md if the task touches a
+   parent task. 
+   
+   Phase-entry orientation: when this task is the first of a new phase
+   (its phase segment differs from the most recently [COMPLETED] task's) and that
+   phase has a roadmap entry, first read that entry in docs/roadmap.md once — Nombre,
+   Objetivo, Entregables — to orient execution against the phase objective. Once per
+   phase, not repeated per atomic task
+   
+   Load .claude/rules/stack.md or domain.md if the task touches a
    technology or domain decision. 
     IMPORTANT: If there more than one task with [EXECUTING] status, stop and report the conflict. 
 
@@ -53,6 +79,26 @@ Execution loop, in strict order:
 
 5. Close. The commit-and-completion sequence is governed by Git Practices.
    Never mark a task [COMPLETED] outside that sequence.
+
+Fases 0–3 carry authoritative, frozen atomic blocks in docs/development.md. They
+  execute directly under MODE: EXECUTION. MODE: PLANNING is not run for them, and
+  Planning branch discipline does not apply to Fases 0–3.
+  Fases 4–5 carry no upstream atomics. Their decomposition is produced JIT under
+  MODE: PLANNING and governed by Planning branch discipline before execution.
+
+Frozen-phase defect handling (Fases 0–3 only).
+  A frozen block is authoritative but not assumed infallible. If, during MODE:
+  EXECUTION, the agent finds a frozen task ill-defined or internally inconsistent
+  (e.g., an obsolete fixture such as 1.1.4):
+    1. Halt execution immediately. Do not code against a defective definition.
+    2. Set the task to [BLOCKED] in docs/development.md.
+    3. Present a proposed amendment to that task's definition and/or Done Criteria,
+       scoped to that single task and no other.
+    4. Alberto ratifies the amendment by committing it to Git (Commit gate applies).
+    5. The task returns to [BACKLOG] and the agent re-executes against the corrected
+       definition.
+  This route is exclusive to Fases 0–3. It is an in-place correction of an
+  authoritative block, not a JIT decomposition and not a planning branch.
 
 
 ## Git Practices
@@ -147,18 +193,55 @@ Planning branch merge.
 - The agent proposes the merge and waits for explicit acceptance before
   executing.
 
+Per-phase working branches carry src/ module code and fixture-based test changes.
+PR has no notebooks; every notebook reference inherited from MIDAS is struck.
+
+Planning branch discipline — scope. Planning branches (docs/plan-phase-<id>,
+MODE: PLANNING) exist for Fases 4–5 only. Fases 0–3 are authoritative and frozen
+and are never planned on a branch (see Task Protocol, Phase-scope of MODE). The
+inherited clause "does not carry pipeline code or notebook changes" is replaced by:
+"carries only docs/development.md changes (task definitions and Done Criteria); it
+never carries src/ module code."
+
 
 ## Plan Mode
 Use /plan before any task, touching more than one file, any refactoring, or any Git operation beyond a simple commit.
 
 ## Critical Checkpoints
-Do not allow Alberto to advance past Phase 1 without validating both:
+Human go/no-go gates. The agent does not let Alberto advance past the named phase
+until the checkpoint is validated. Distinct from ordinary Done Criteria: each guards
+a failure that is silent, irreversible, or downstream-corrupting.
 
-Step 1.6 — Deduplication: a unique descriptions DataFrame must exist with a mapping key that produces a lossless join back to the original 15,000 rows in Phase 8.4. Validate: does the unique DataFrame exist? Does the mapping key exist and produce a lossless join?
+Checkpoint 1 — Fase 2, failure observability. Do not advance past Fase 2 until the
+failure-alerting path (2.1.5, D-14.5) is validated. A structural failure freezes the
+weekly refresh with no notice; if alerting is unproven, the freeze goes unseen.
+Validate: does a forced failure raise the alert?
 
-Step 1.12 — Contradictory Historial: descriptions with multiple conflicting family assignments must be detected, resolved by a declared rule, and cleaned before Phase 2. Validate: has the contradictory dataset been identified? Has a resolution rule been applied? Is the cleaned historial free of duplicate descriptions with conflicting families?
+Checkpoint 2 — Fase 3, live abort/exclusion paths. Do not advance past Fase 3 until
+every abort and exclusion route of the Precondition Gate fires against the real
+Shared Drive (3.4), not fixtures: R31 ∥ R23–R26 (OR-abort / AND-success) plus R32
+per-obra exclusion. First live run; the failure mode is silent partial output
+reaching BigQuery. Validate: does each injected condition produce its specified
+outcome against disposable artifacts?
+
+Checkpoint 3 — Fase 5, parallel-run sign-off (pre-cutover). Do not advance from 5.3
+to 5.4 (legacy M-transform retirement) without an explicit parity sign-off at PR's
+output boundary. Cutover is irreversible; the legacy pipeline stays live until
+sign-off. Validate: T1/T2/T3 match the legacy table at the CÓMPUTO handoff over the
+agreed window. Parity is bounded to PR's output boundary — recomputation inside
+CÓMPUTO is out of scope.
+
+R16/R18 structural abort and the D-14.5 deferred-atomic write are Done Criteria of
+their phases, not checkpoints.
 
 ## Rules Directory
 Load when relevant:
-- .claude/rules/stack.md: technology constraints and prohibited alternatives. Load for any library or infrastructure decision.
-- .claude/rules/domain.md: domain context and Chilean construction materials glossary. Load for normalization, family assignment, or prompt engineering decisions.
+- .claude/rules/stack.md: PR technology constraints and prohibited alternatives
+  (Polars as the row engine, BigQuery, Cloud Run Job + Scheduler, Shared Drive
+  input, Artifact Registry). Load for any library or infrastructure decision.
+- .claude/rules/domain.md: PR domain glossary (obra, macropartida, tipologia,
+  N1–N5, estatus, USAR) and row-level rule context. Load for normalization,
+  routing, join, or schema decisions.
+Both files are authored as execution tasks 0.0.1 (stack.md) and 0.0.2 (domain.md)
+before Fase 0. Until then the references are dangling but unreached: 0.0.x is the
+first execution work and the load clause is conditional ("when relevant").
