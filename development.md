@@ -99,7 +99,7 @@ executes and the work-commit hash is recorded in Done Evidence.
   Mechanical derivation from Bloque 2 (no new spec decisions): document PR's
   domain glossary and row-level rule context for agent consultation during
   EXECUTION.
-  Status: [REVIEWING]
+  Status: [COMPLETED]
   Done Criteria:
   1. Define obra: the construction project unit, parsed from nombre_programa
      (substring before the first "_", R3) and present as a normalized join
@@ -125,6 +125,7 @@ executes and the work-commit hash is recorded in Done Evidence.
   7. Exclude executable code and any new rule content beyond what Bloque 2
      already settled — the file holds reference material only.
   Done Evidence:
+  Work-commit: e3b3e81
 
 ### FASE 0 - Local Repo & Scaffolding
 #### 0.1 - Enviroment
