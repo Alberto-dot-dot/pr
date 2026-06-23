@@ -2,32 +2,31 @@
 
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
 
-**Versión:** S18 → S19, fecha 2026-06-22
-**Sesión de origen:** Bloque 4 — descomposición de Fase 4 (BigQuery Aggregation & Service
-Views, lado productor) a NIVEL DE ROADMAP (Paso). Auditoría previa detectó que Paso 1.8 (Fase 1)
-portaba la etiqueta [CLOSED] sobre un contrato de salida row-level nunca enumerado — la interfaz
-Polars→BigQuery (corte D-10.3) existía solo por nombre. Resuelto: stg_matched tiene DOS caras
-de tipo — frame Arrow/Polars local de 9 columnas (Fase 1, ids UInt64, sin run_date) y tabla
-BigQuery de 10 columnas (frontera de escritura Fase 3, ids STRING, run_date estampado). La
-derivación de las 10 columnas es determinada por reglas cerradas (R5, R8/D-10.3, R9/R10,
-R15/R20, R4-T1/T2, R1/R6, R27), no elegida; columnas upstream-only (N1..N5, actividad_norm,
-tipologia_norm) excluidas del staging por ausencia de lector downstream. Corrección de
-atribución: run_date y el cast STRING son transformaciones de la frontera de escritura (3.4.3,
-Fase 3), NO de Fase 1 ni Fase 4 — el frame local no puede portar un timestamp de Job que aún no
-existe (rompería 1.8.2 contra fixture 1.1.4). Cast STRING para id_actividad/id_tipologia:
-BigQuery no tiene UINT64; ~50% de los hashes FNV-1a-64 exceden INT64 max y desbordarían a
-negativo — STRING elegido por join bijectivo y estable. Grano de R30 resuelto: row-level
-(simetría de mecanismo con T1/T2, no de grano; trazabilidad para corrección upstream, espejo de
-recon_nomatch). Frontera authorized-view aislada en Paso 4.4 propio; R30 confirmado en
-pr_staging, fuera del grant de servicio. Decisión de proceso mayor: descomposición atómica pasa a
-JIT/incremental desde Fase 4 inclusive (MODE: PLANNING → EXECUTION del Task Protocol de
-CLAUDE.md) — los atómicos de Fase 4 NO se escriben upstream, se proponen en ejecución, homologada
-a Fase 5; Fases 0–3 congeladas como referencia revisable; Bloque 5 disuelto (el spec de
-development se escribe durante la ejecución, no upstream). Fase 4 cerrada a nivel de roadmap
-(5 Pasos, sin atómicos). Próximo foco: terminar roadmap.md (Fase 5 a nivel Paso) y luego
-Bloque 6 (CLAUDE.md), precondición dura de la ejecución.
+**Versión:** S19 → S20, fecha 2026-06-22
+**Sesión de origen:** Bloque 4 — descomposición de Fase 5 (Consumer Enablement & Cutover)
+a NIVEL DE ROADMAP (Paso), última fase del roadmap. Con su cierre, roadmap.md queda
+COMPLETO (Fases 0–5). Fase 5 es lado consumidor puro: no porta lógica productora ni toca
+el aislamiento de pr_staging. 5 Pasos: 5.1 grant IAM de analistas sobre pr_serving (R29,
+el grant en sí, distinto del link de authorized view de 4.4); 5.2 habilitación de
+conexión pull-only (R28, Connected Sheets T3 / Power Query T1-T2, identidad individual,
+refresh manual — el conector transitorio Modelo 2, no se retira aquí); 5.3 parallel-run
+validation como gate de cutover (paridad en la frontera de salida de PR, no dentro de
+CÓMPUTO; legado vivo hasta sign-off); 5.4 retiro del pipeline de transformación M legado
+(solo el transform completo de 13 columnas, NO el conector PQ→BQ de 5.2) con ventana de
+rollback; 5.5 aceptación terminal end-to-end (contrato de cierre del roadmap). Auditoría
+clave: se separó el retiro del transform M legado del conector transitorio PQ→BQ —
+conflactarlos retiraría el mecanismo que la propia fase entrega. Decisiones estructurales
+confirmadas por Alberto: 5.3 (gate de paridad pre-cutover) y 5.5 (aceptación post-cutover)
+permanecen separados por divergencia temporal/lógica; el test negativo de aislamiento vive
+en 5.5 (patrón provision-then-verify). Split grant/link respetado: 5.1 toca pr_serving
+únicamente, no re-toca el link de 4.4 ni el aislamiento de pr_staging. Homología terminal
+mantenida: 5.5 espeja 2.5/3.4/4.5. Sin descomposición atómica (JIT desde Fase 4 inclusive,
+S19). Con roadmap.md completo, resta únicamente Bloque 6 (CLAUDE.md) — precondición dura
+de la ejecución — antes de construir. Próximo foco: Bloque 6 (CLAUDE.md), último artefacto
+de especificación.
 
-**Módulo en foco:** PR — scope-lock activo (un solo módulo hasta PENDIENTE crítico vacío)
+**Módulo en foco:** PR — scope-lock activo (un solo módulo hasta fase de especificación completa = CLAUDE.md escrito)
+
 **Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada S9/S10/S14), R9–R10, R11 (enmendada S10), R12–R22, R23–R26 (S11, cierre #11), R27 (S13, §5.9, cierre parcial #10), R28–R30 (S14, nuevas, §5.10, cierre total #10), R31–R32 (S15, nuevas, §5.11, cierre #13), R6.1 borde. R4 retirada en S9. R15 enmendada en S10: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]; enmendada nuevamente en S13 (R27): se agrega run_date. EN DISPUTA vacío desde S10. PENDIENTE crítico vacío desde S15.
 
 **Test de verificabilidad (Definition of Done):** una regla está DEFINIDA si y solo si se expresa como
@@ -812,8 +811,21 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   reasignadas a 3.4.3 (Fase 3), su lugar correcto; fixture 1.1.4 reconciliada al frame de 9
   columnas. Paso terminal 4.5 (verificación en vivo) homólogo a 2.5/3.4. Decisión metodológica
   mayor (S19): la descomposición atómica pasa a JIT/incremental desde Fase 4 inclusive; Bloque 5
-  disuelto; solo Fases 0–3 conservan atómicos congelados como referencia. Con Fase 4 a nivel
-  roadmap, resta únicamente Fase 5 (nivel Paso) para cerrar roadmap.md.
+  disuelto; solo Fases 0–3 conservan atómicos congelados como referencia.
+  Fase 5 (Consumer Enablement & Cutover) descompuesta a NIVEL DE ROADMAP (Paso) únicamente
+  (S20): 5 Pasos, sin tareas atómicas. 5.1 grant IAM de analistas sobre pr_serving (R29,
+  el grant en sí, distinto del link de authorized view de 4.4); 5.2 habilitación de conexión
+  pull-only (R28, Connected Sheets T3 / Power Query T1-T2, identidad individual, refresh
+  manual — conector transitorio Modelo 2, no retirado aquí); 5.3 parallel-run validation
+  como gate de cutover (paridad en la frontera de salida de PR, legado vivo hasta sign-off);
+  5.4 retiro del transform M legado (solo el transform de 13 columnas, NO el conector PQ→BQ
+  de 5.2) con ventana de rollback; 5.5 aceptación terminal E2E + test negativo de aislamiento
+  de staging (contrato de cierre del roadmap, homólogo a 2.5/3.4/4.5). Auditoría: se separó
+  el retiro del transform M legado del conector transitorio PQ→BQ (conflactarlos retiraría
+  el mecanismo que la fase entrega); paridad acotada a la frontera de PR (recomputación de
+  CÓMPUTO fuera de scope); split grant/link respetado (5.1 toca solo pr_serving). Con Fase 5
+  a nivel roadmap, roadmap.md queda COMPLETO (Fases 0–5). Resta únicamente Bloque 6 antes de
+  la construcción.
 
 - **Bloque 6 — CLAUDE.md** (archivo) ← **ACTIVO (S16)**, no condicional. Enmienda: se retira la
   condicionalidad declarada en S15 — la arquitectura sin Colab y el contrato single-admin de PR sí
@@ -822,10 +834,14 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   Scheduler, sin Colab. Archivo standalone en la raíz del repo, NO embebido en este spec (mantiene
   liviano el contexto del agente). Secuenciamiento: después de que Bloque 4 complete su descomposición
   atómica (su sección de Checkpoints Críticos lo requiere) y antes de iniciar Bloque 5. Depende de B4.   
-  Enmienda S19: con Bloque 5 disuelto, CLAUDE.md es el último artefacto de especificación —
+  Enmienda S19: con Bloque 5 disuelto, CLAUDE.md es el último artefacto de especificación —   
   precondición dura de la ejecución (el Task Protocol que gobierna el loop incremental debe
   existir antes de construir). Secuencia final: terminar roadmap.md (Fase 5 nivel Paso) → B6
   (CLAUDE.md) → construcción.
+  Enmienda S20: roadmap.md COMPLETO (Fases 0–5 a nivel Paso). La precondición de Bloque 6
+  ("la sección de Checkpoints Críticos requiere el roadmap completo") queda satisfecha.
+  Bloque 6 es ahora el único artefacto de especificación pendiente y el siguiente foco
+  inmediato.
 
 - **Bloque 5 — Development Fase 1** (archivo) ← **DISUELTO (S19)**. Bajo descomposición atómica
   JIT/incremental, el spec de development se escribe durante la ejecución de cada fase (MODE:
@@ -1225,7 +1241,25 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   avanza; la auditoría adversarial de cobertura se mantiene, reubicada al momento de proponer
   cada fase, no upstream en lote. Solo Fases 0–3 conservan atómicos escritos, congelados como
   referencia revisable (el state machine ya permite rechazar/reworkar una tarea obsoleta en
-  ejecución). Bloque 5 disuelto. [proceso] (S19)
+  ejecución). Bloque 5 disuelto. [proceso] (S19).
+
+- Fase 5 (Consumer Enablement & Cutover) descompuesta a NIVEL DE ROADMAP (Paso)
+  únicamente: 5 Pasos, sin tareas atómicas (JIT en ejecución). Lado consumidor puro — no
+  porta lógica productora, no toca aislamiento de pr_staging. 5.1 grant IAM analistas sobre
+  pr_serving (R29, dataset-level, scope excluye pr_staging; distinto del link de authorized
+  view de 4.4). 5.2 conexión pull-only (R28, Connected Sheets T3 / Power Query T1-T2,
+  identidad individual, refresh manual, sin intermediario; conector transitorio Modelo 2,
+  no retirado aquí). 5.3 parallel-run validation como gate de cutover — paridad afirmada en
+  la frontera de salida de PR únicamente (recomputación de CÓMPUTO fuera de scope), legado
+  vivo hasta sign-off; gate que 5.4 no puede preceder. 5.4 retiro del transform M legado
+  (solo el ingest→normalize→join→aggregate de 13 columnas, NO el conector PQ→BQ de 5.2),
+  con ventana de rollback acotada; ruta productora única = Cloud Run Job → BigQuery. 5.5
+  aceptación terminal E2E (contrato de cierre del roadmap, homólogo a 2.5/3.4/4.5): pull
+  positivo de T1/T2/T3 bajo identidad individual vía ambas herramientas + test negativo de
+  aislamiento (analista denegado sobre stg_matched, recon_nomatch, vista residual R30,
+  patrón provision-then-verify). Separación 5.3/5.5 confirmada (pre-cutover vs estado
+  estable post-cutover). Con esta descomposición, roadmap.md COMPLETO (Fases 0–5). [D]
+  (roadmap.md Fase 5, S20)
 
 
 ### PARCIALMENTE DEFINIDO
@@ -1331,3 +1365,34 @@ dura) → construir. Correcciones de docs aplicadas a fases ejecutables: 1.8.1 r
 3.4.3 ampliado (STRING + run_date + 10-col target), fixture 1.1.4 reconciliada; Fase 4 inyectada
 en roadmap.md a nivel Paso (no en development.md). Próximo foco: descomponer Fase 5 a nivel Paso
 para cerrar roadmap.md, luego Bloque 6.
+
+**S20 — 2026-06-22**: Bloque 4. Foco: descomposición de Fase 5 (Consumer Enablement &
+Cutover) a nivel de roadmap (Paso) — última fase del roadmap. Cierre de roadmap.md
+(Fases 0–5 completas a nivel Paso). 5 Pasos definidos sin tareas atómicas (JIT desde Fase 4
+inclusive, S19). Auditoría adversarial antes de transcribir, cuatro catches sustantivos:
+(A) "legacy PQ/M retirement" conflactaba dos artefactos PQ que el spec ya separa
+(D-10.1/D-10.2) — el transform M legado de 13 columnas (lo que 5.4 retira) y el conector
+transitorio PQ→BQ Modelo 2 (lo que 5.2 levanta y NO se retira aquí; su decommission es la
+migración Workspace futura, §2, fuera de este roadmap); conflactarlos retiraría el
+mecanismo que la fase entrega — separación forzada explícita en el wording de Pasos. (B)
+cutover irreversible → gate de parallel-run obligatorio (5.3) gating el retiro (5.4),
+legado vivo hasta sign-off. (C) paridad acotada a la frontera de salida de PR (T1/T2/T3 vs
+tabla legada en el handoff a CÓMPUTO), NO dentro de CÓMPUTO — "¿CÓMPUTO computa bien?" es
+aceptación de CÓMPUTO, fuera de scope-lock de PR. (D) trazabilidad cruzada: retirar el
+transform M fuerza a CÓMPUTO a repointar a BQ; PR posee el retiro y el lado PRODUCE, el
+repoint interno de CÓMPUTO es coordinación de ejecución (flag en 5.3/5.4), no disputa de
+sistema — PR→CÓMPUTO settled (S10). Dos decisiones estructurales confirmadas por Alberto:
+(1) 5.3 (gate de paridad pre-cutover) y 5.5 (aceptación post-cutover) permanecen separados
+— divergencia temporal/lógica, colapsarlos introduce riesgo estructural; (2) test negativo
+de aislamiento (denegación de analista sobre artefactos de pr_staging) vive en 5.5,
+validando el patrón provision-then-verify, no inmediatamente tras 5.1. Split grant/link
+auditado y limpio: 5.1 otorga lectura sobre pr_serving únicamente, ningún Paso toca
+pr_staging, el link de authorized view de 4.4 no se re-toca. Homología terminal mantenida:
+5.5 espeja 2.5/3.4/4.5 como contrato de cierre del roadmap. PENDIENTE no bloqueante: duración
+de la ventana de rollback de 5.4 (parámetro operacional, no regla de roadmap); detalle fino
+de criterios de paridad de 5.3 (proper a descomposición atómica JIT); esquema fino de la
+cola de anomalías (R2/R6.1/R22, arrastrado sin cambio desde Fase 1). EN DISPUTA dentro de
+scope PR: ninguno. Con roadmap.md completo, la fase de especificación de PR tiene un único
+artefacto restante: Bloque 6 (CLAUDE.md), precondición dura de la construcción. Próximo
+foco: Bloque 6 — autoría de CLAUDE.md (Task Protocol, Git Practices, Commit/Merge gates,
+Critical Checkpoints, adaptado a runtime Cloud Run Job + Scheduler sin Colab).
