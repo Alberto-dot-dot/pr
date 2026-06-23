@@ -69,6 +69,64 @@ executes and the work-commit hash is recorded in Done Evidence.
 
 ## Sub-tasks
 
+### FASE 0.0 — Governance Rules Authoring
+
+* 0.0.1 — Author .claude/rules/stack.md
+  Mechanical derivation from Bloque 3 (no new spec decisions): document PR's
+  stack constraints and prohibited alternatives for agent consultation during
+  EXECUTION.
+  Status: [COMPLETED]
+  Done Criteria:
+  1. Declare the mandated stack: Polars as the row-level ETL engine, BigQuery
+     (staging + serving), Cloud Run Job + Cloud Scheduler (autonomous weekly
+     runtime), Google Shared Drive as the sole input channel (service account
+     membership, no GCS sync), Artifact Registry for the container image.
+  2. Enumerate the D-10.x / D-14.x constraints that bind stack choice: D-10.4
+     (staging/serving dataset separation), D-14.1/D-14.2 (Scheduler params,
+     not business rules), D-14.3 (no resource-tier override on the Cloud Run
+     Job), D-14.4 (no domain-wide delegation, no forced GCS sync), D-14.5
+     (atomic write / failure-alerting requirement).
+  3. List the prohibited alternatives explicitly: pandas as the row engine,
+     INT64 (vs. STRING-cast) ids at the BigQuery write boundary, any Cloud Run
+     Job resource override absent an explicit ratified exception, GCS as an
+     input source.
+  4. Exclude executable code and any new rule content beyond what Bloque 3
+     already settled — the file holds reference material only.
+  Done Evidence:
+  Work-commit: 57e0c0d
+
+* 0.0.2 — Author .claude/rules/domain.md
+  Mechanical derivation from Bloque 2 (no new spec decisions): document PR's
+  domain glossary and row-level rule context for agent consultation during
+  EXECUTION.
+  Status: [COMPLETED]
+  Done Criteria:
+  1. Define obra: the construction project unit, parsed from nombre_programa
+     (substring before the first "_", R3) and present as a normalized join
+     key (obra_norm) throughout the pipeline.
+  2. Define macropartida and tipologia: tipologia is the work-type
+     classification resolved via the mapeo join (R7) keyed on
+     (obra_norm, N1_norm..N5_norm); macropartida is the per-obra scheduling
+     grouping excluded wholesale on zero/ambiguous mapeo match (R32).
+  3. Define N1–N5: the five-level hierarchical breakdown columns used as
+     join/identity keys (normalized to N1_norm..N5_norm) between the PR file
+     and the mapeo; consumed by the join, not present in the local output
+     frame (1.8.1).
+  4. Define estatus / ESTATUS C.CLOUD: the raw status column, force-cast to
+     Utf8 (R13) preserving null as null; estatus_c_cloud_norm survives into
+     stg_matched as a GROUP BY key / R9-R10 predicate.
+  5. Define USAR: the raw inclusion flag; rows where USAR ≠ "SI" are evicted
+     upstream of all normalization (R14), with no USAR_norm ever generated.
+  6. Reference, without restating logic, the row-level rules that govern
+     these terms: R5 (obra_norm derivation, USAR no-norm exception), R6/R6.1
+     (id_tipologia hashing, mapeo fail-fast), R7 (join), R8 (no-match
+     disposition) — by ID only, pointing to development.md for the
+     executable definition.
+  7. Exclude executable code and any new rule content beyond what Bloque 2
+     already settled — the file holds reference material only.
+  Done Evidence:
+  Work-commit: e3b3e81
+
 ### FASE 0 - Local Repo & Scaffolding
 #### 0.1 - Enviroment
 
