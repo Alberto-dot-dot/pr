@@ -75,7 +75,7 @@ executes and the work-commit hash is recorded in Done Evidence.
   Mechanical derivation from Bloque 3 (no new spec decisions): document PR's
   stack constraints and prohibited alternatives for agent consultation during
   EXECUTION.
-  Status: [REVIEWING]
+  Status: [COMPLETED]
   Done Criteria:
   1. Declare the mandated stack: Polars as the row-level ETL engine, BigQuery
      (staging + serving), Cloud Run Job + Cloud Scheduler (autonomous weekly
@@ -93,6 +93,7 @@ executes and the work-commit hash is recorded in Done Evidence.
   4. Exclude executable code and any new rule content beyond what Bloque 3
      already settled — the file holds reference material only.
   Done Evidence:
+  Work-commit: 57e0c0d
 
 ### FASE 0 - Local Repo & Scaffolding
 #### 0.1 - Enviroment
