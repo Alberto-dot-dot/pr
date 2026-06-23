@@ -43,11 +43,21 @@ Legal transitions:
                              (see Control Gates).
 [REJECTED]  -> [EXECUTING]   rework.
 (any)       -> [BLOCKED]     a blocking condition appears.
+[BLOCKED]   -> [BACKLOG]     blocker resolved; task re-queued for execution.
 
 Rejection handling: when a task becomes [REJECTED], the agent must:
 1. Rewrite the status to [EXECUTING].
 2. Wait for Alberto's feedback.
 3. Re-execute the task.
+
+Frozen-phase defect handling (Fases 0-3 only): when a frozen, authoritative
+atomic task (Fases 0-3) is found ill-defined during MODE: EXECUTION, the agent
+sets it to [BLOCKED]. Resolution follows the "Frozen-phase defect handling"
+procedure in the CLAUDE.md Task Protocol (propose a scoped amendment -> Alberto
+ratifies via the Commit gate -> [BACKLOG] -> re-execute). For this sub-case the
+[BLOCKED] -> [BACKLOG] transition is gated on the ratified amendment commit, not
+on a bare status edit. The procedure is owned by CLAUDE.md and is not restated
+here.
 
 Invariant: at most one task may hold the status [EXECUTING] at any time.
 The agent executes one task at a time.
