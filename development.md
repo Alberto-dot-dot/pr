@@ -95,6 +95,37 @@ executes and the work-commit hash is recorded in Done Evidence.
   Done Evidence:
   Work-commit: 57e0c0d
 
+* 0.0.2 — Author .claude/rules/domain.md
+  Mechanical derivation from Bloque 2 (no new spec decisions): document PR's
+  domain glossary and row-level rule context for agent consultation during
+  EXECUTION.
+  Status: [REVIEWING]
+  Done Criteria:
+  1. Define obra: the construction project unit, parsed from nombre_programa
+     (substring before the first "_", R3) and present as a normalized join
+     key (obra_norm) throughout the pipeline.
+  2. Define macropartida and tipologia: tipologia is the work-type
+     classification resolved via the mapeo join (R7) keyed on
+     (obra_norm, N1_norm..N5_norm); macropartida is the per-obra scheduling
+     grouping excluded wholesale on zero/ambiguous mapeo match (R32).
+  3. Define N1–N5: the five-level hierarchical breakdown columns used as
+     join/identity keys (normalized to N1_norm..N5_norm) between the PR file
+     and the mapeo; consumed by the join, not present in the local output
+     frame (1.8.1).
+  4. Define estatus / ESTATUS C.CLOUD: the raw status column, force-cast to
+     Utf8 (R13) preserving null as null; estatus_c_cloud_norm survives into
+     stg_matched as a GROUP BY key / R9-R10 predicate.
+  5. Define USAR: the raw inclusion flag; rows where USAR ≠ "SI" are evicted
+     upstream of all normalization (R14), with no USAR_norm ever generated.
+  6. Reference, without restating logic, the row-level rules that govern
+     these terms: R5 (obra_norm derivation, USAR no-norm exception), R6/R6.1
+     (id_tipologia hashing, mapeo fail-fast), R7 (join), R8 (no-match
+     disposition) — by ID only, pointing to development.md for the
+     executable definition.
+  7. Exclude executable code and any new rule content beyond what Bloque 2
+     already settled — the file holds reference material only.
+  Done Evidence:
+
 ### FASE 0 - Local Repo & Scaffolding
 #### 0.1 - Enviroment
 
