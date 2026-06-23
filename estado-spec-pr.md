@@ -2,30 +2,18 @@
 
 > Documento canónico de estado. Bajo Spec Driven Development, **este documento ES el estado del proyecto**. No existe memoria entre sesiones distinta de este archivo. Protocolo: se relee completo al inicio de cada sesión; se reemplaza con la versión más reciente al cierre (disciplina state-commit). Cualquier contradicción entre este documento y la conversación se resuelve a favor de este documento o se eleva como conflicto explícito.
 
-**Versión:** S19 → S20, fecha 2026-06-22
-**Sesión de origen:** Bloque 4 — descomposición de Fase 5 (Consumer Enablement & Cutover)
-a NIVEL DE ROADMAP (Paso), última fase del roadmap. Con su cierre, roadmap.md queda
-COMPLETO (Fases 0–5). Fase 5 es lado consumidor puro: no porta lógica productora ni toca
-el aislamiento de pr_staging. 5 Pasos: 5.1 grant IAM de analistas sobre pr_serving (R29,
-el grant en sí, distinto del link de authorized view de 4.4); 5.2 habilitación de
-conexión pull-only (R28, Connected Sheets T3 / Power Query T1-T2, identidad individual,
-refresh manual — el conector transitorio Modelo 2, no se retira aquí); 5.3 parallel-run
-validation como gate de cutover (paridad en la frontera de salida de PR, no dentro de
-CÓMPUTO; legado vivo hasta sign-off); 5.4 retiro del pipeline de transformación M legado
-(solo el transform completo de 13 columnas, NO el conector PQ→BQ de 5.2) con ventana de
-rollback; 5.5 aceptación terminal end-to-end (contrato de cierre del roadmap). Auditoría
-clave: se separó el retiro del transform M legado del conector transitorio PQ→BQ —
-conflactarlos retiraría el mecanismo que la propia fase entrega. Decisiones estructurales
-confirmadas por Alberto: 5.3 (gate de paridad pre-cutover) y 5.5 (aceptación post-cutover)
-permanecen separados por divergencia temporal/lógica; el test negativo de aislamiento vive
-en 5.5 (patrón provision-then-verify). Split grant/link respetado: 5.1 toca pr_serving
-únicamente, no re-toca el link de 4.4 ni el aislamiento de pr_staging. Homología terminal
-mantenida: 5.5 espeja 2.5/3.4/4.5. Sin descomposición atómica (JIT desde Fase 4 inclusive,
-S19). Con roadmap.md completo, resta únicamente Bloque 6 (CLAUDE.md) — precondición dura
-de la ejecución — antes de construir. Próximo foco: Bloque 6 (CLAUDE.md), último artefacto
-de especificación.
+**Versión:** S20 → S21, fecha 2026-06-23
+**Sesión de origen:** Bloque 6 — autoría de CLAUDE.md (Project Contract de Claude Code),
+último artefacto de especificación. Standalone en la raíz del repo, NO embebido en este
+spec. Hereda el esqueleto de MIDAS adaptado al runtime de PR (Cloud Run Job + Scheduler,
+Polars, BigQuery, Shared Drive, Artifact Registry; sin Colab, sin stack ML). Con su cierre,
+la fase de especificación de PR queda COMPLETA — no restan artefactos de spec. Próximo foco:
+enmienda de development.md (transición [BLOCKED]→[BACKLOG] del hatch de defecto frozen,
+Fases 0–3), luego ejecución (gobernanza 0.0.x → Fase 0).
 
-**Módulo en foco:** PR — scope-lock activo (un solo módulo hasta fase de especificación completa = CLAUDE.md escrito)
+**Módulo en foco:** PR — fase de especificación COMPLETA (S21, CLAUDE.md escrito). Scope-lock
+se mantiene sobre PR; el único movimiento legítimo siguiente es ejecución (build), no nueva
+superficie de spec. Buscar nuevas superficies de spec tras este punto es dispersión.
 
 **Estado global:** reglas de negocio activas: R1–R3, R3.1, R4-T1, R4-T2, R5–R7, R8 (enmendada S9/S10/S14), R9–R10, R11 (enmendada S10), R12–R22, R23–R26 (S11, cierre #11), R27 (S13, §5.9, cierre parcial #10), R28–R30 (S14, nuevas, §5.10, cierre total #10), R31–R32 (S15, nuevas, §5.11, cierre #13), R6.1 borde. R4 retirada en S9. R15 enmendada en S10: esquema Tabla 3 reducido a [obra, estatus, nombre_actividad, tipologia, fecha]; enmendada nuevamente en S13 (R27): se agrega run_date. EN DISPUTA vacío desde S10. PENDIENTE crítico vacío desde S15.
 
@@ -827,7 +815,7 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   a nivel roadmap, roadmap.md queda COMPLETO (Fases 0–5). Resta únicamente Bloque 6 antes de
   la construcción.
 
-- **Bloque 6 — CLAUDE.md** (archivo) ← **ACTIVO (S16)**, no condicional. Enmienda: se retira la
+- *Bloque 6 — CLAUDE.md** (archivo) ← **CERRADO (S21)** (previamente ACTIVO S16, no condicional). Enmienda: se retira la
   condicionalidad declarada en S15 — la arquitectura sin Colab y el contrato single-admin de PR sí
   exigen gobernanza propia, confirmado en S16. Hereda el esqueleto de MIDAS (MODE, Task Protocol, Git
   Practices, Commit/Merge gates, Directory Access Restriction), adaptado a runtime Cloud Run Job +
@@ -842,6 +830,17 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   ("la sección de Checkpoints Críticos requiere el roadmap completo") queda satisfecha.
   Bloque 6 es ahora el único artefacto de especificación pendiente y el siguiente foco
   inmediato.
+  Enmienda S21: CLAUDE.md AUTORADO y CERRADO. Layout espejo de MIDAS — CLAUDE.md en raíz;
+  docs/roadmap.md, docs/development.md, .claude/rules/stack.md, .claude/rules/domain.md.
+  Directory boundary: C:\Users\Democorp\Projects\pr. Secciones entregadas: Project Identity
+  (runtime PR sin Colab), Runtime Boundary (NUEVA, sin equivalente MIDAS — agente solo
+  dev-time, cero acción sobre el Job/Scheduler de producción autónomo), Directory Access
+  Restriction, Task Protocol (MODE PLANNING|EXECUTION heredado + phase-scope: Fases 0–3
+  frozen/autoritativas vía EXECUTION directo, Fases 4–5 JIT vía PLANNING; hatch de defecto
+  frozen scopeado a 0–3), Git Practices (notebook→módulos src/ + tests con fixtures;
+  Planning branch discipline acotada a Fases 4–5), Critical Checkpoints (set de tres),
+  Rules Directory (stack.md/domain.md por referencia, contenido diferido a 0.0.x). Con su
+  cierre, la fase de especificación de PR está COMPLETA.
 
 - **Bloque 5 — Development Fase 1** (archivo) ← **DISUELTO (S19)**. Bajo descomposición atómica
   JIT/incremental, el spec de development se escribe durante la ejecución de cada fase (MODE:
@@ -1261,6 +1260,29 @@ Orden por dependencia. Gating: no se genera un archivo si su bloque tiene PENDIE
   estable post-cutover). Con esta descomposición, roadmap.md COMPLETO (Fases 0–5). [D]
   (roadmap.md Fase 5, S20)
 
+- CLAUDE.md (Project Contract de Claude Code) autorado y cerrado (S21). Archivo standalone
+  en la raíz del repo, fuera de este spec (mantiene liviano el contexto del agente). Decisiones
+  fijadas: (1) Runtime Boundary — el contrato gobierna solo tiempo de desarrollo; producción es
+  el Cloud Run Job + Scheduler autónomo (D-14.1/D-14.2), cero rol del agente; toda tarea que
+  implique acción de runtime de producción → halt. (2) Phase-scope de MODE — Fases 0–3 frozen y
+  AUTORITATIVAS, ejecución directa vía MODE: EXECUTION, sin Planning branch; Fases 4–5 sin
+  atómicos upstream, decomposición JIT vía MODE: PLANNING bajo Planning branch discipline.
+  (3) Hatch de defecto frozen (exclusivo Fases 0–3) — defecto en bloque autoritativo (p.ej.
+  fixture 1.1.4 obsoleta) → halt → [BLOCKED] → propuesta de enmienda acotada a esa tarea →
+  ratificación de Alberto vía Commit gate → [BACKLOG] → re-ejecución. NO es JIT ni planning
+  branch. (4) Critical Checkpoints (tres go/no-go humanos, distintos de Done Criteria):
+  Fase 2 observabilidad de fallo (D-14.5 silent-freeze); Fase 3 prueba en vivo de todas las
+  rutas de abort/exclusión del Precondition Gate contra la Shared Drive real (R31 ∥ R23–R26,
+  R32, en 3.4); Fase 5 sign-off de paridad parallel-run pre-cutover (5.3→5.4, irreversible,
+  paridad acotada a la frontera de salida de PR). R16/R18 y D-14.5 deferred-write quedan como
+  Done Criteria, no checkpoints. (5) Layout espejo de MIDAS; single-admin inherit limpio (MIDAS
+  ya single-actor). [Bloque 6, S21]
+
+- Carry-forward registrado (NO ejecución de spec): el hatch de defecto frozen exige una
+  transición [BLOCKED]→[BACKLOG] que el state machine heredado de docs/development.md aún no
+  declara. Enmienda pendiente sobre development.md (no sobre este spec ni sobre CLAUDE.md),
+  próxima sesión. [S21]
+
 
 ### PARCIALMENTE DEFINIDO
 - Canonicalización de `""` vs `null` en ESTATUS C.CLOUD. Ambos valores ya
@@ -1396,3 +1418,24 @@ scope PR: ninguno. Con roadmap.md completo, la fase de especificación de PR tie
 artefacto restante: Bloque 6 (CLAUDE.md), precondición dura de la construcción. Próximo
 foco: Bloque 6 — autoría de CLAUDE.md (Task Protocol, Git Practices, Commit/Merge gates,
 Critical Checkpoints, adaptado a runtime Cloud Run Job + Scheduler sin Colab).
+
+**S21 — 2026-06-23**: Bloque 6 — autoría de CLAUDE.md, último artefacto de especificación;
+cierre de la fase de especificación de PR. Auditoría adversarial del esqueleto MIDAS antes de
+redactar: la premisa de "supuestos multi-actor a remover" se descartó (MIDAS ya es single-actor,
+todo gate = Alberto); catch principal = Runtime Boundary ausente en MIDAS y obligatorio en PR
+(MIDAS corre interactivo en Colab, no tiene runtime de producción autónomo que fencing). Tres
+PENDIENTE/DISPUTA resueltos por Alberto antes del draft: (1) EN DISPUTA frozen vs JIT —
+resuelto AUTORITATIVO: Fases 0–3 ejecutan directo vía MODE: EXECUTION, Planning branch
+discipline acotada a 4–5; (2) path raíz = C:\Users\Democorp\Projects\pr; (3) layout espejo de
+MIDAS (CLAUDE.md raíz; docs/, .claude/rules/). Hatch de defecto frozen confirmado (scopeado a
+0–3, vía Commit gate, sin planning branch). Critical Checkpoints auditados contra el bar
+"silent/irreversible/downstream-corrupting + go/no-go humano": set de tres (Fase 2, Fase 3,
+Fase 5); R16/R18 y D-14.5 deferred-write demotados a Done Criteria. Decisión de ubicación de
+stack.md/domain.md: NO como Bloque 7 de spec (sería evasión por re-arquitectura tras cerrar el
+roadmap) — son derivación mecánica de Bloques 2–3, cero decisiones abiertas; van a
+development.md como tareas de ejecución 0.0.1/0.0.2, primer acto del build loop. Draft de
+CLAUDE.md entregado como deltas (no regeneración total). Flag de cierre: el hatch fuerza una
+enmienda al state machine de development.md ([BLOCKED]→[BACKLOG]), cerrado.
+Con CLAUDE.md cerrado, la fase de especificación de PR está COMPLETA; el siguiente movimiento
+es ejecución, no spec. Próximo foco: Apertura de ejecución
+(0.0.x → Fase 0).
