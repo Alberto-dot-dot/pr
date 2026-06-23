@@ -69,6 +69,31 @@ executes and the work-commit hash is recorded in Done Evidence.
 
 ## Sub-tasks
 
+### FASE 0.0 — Governance Rules Authoring
+
+* 0.0.1 — Author .claude/rules/stack.md
+  Mechanical derivation from Bloque 3 (no new spec decisions): document PR's
+  stack constraints and prohibited alternatives for agent consultation during
+  EXECUTION.
+  Status: [REVIEWING]
+  Done Criteria:
+  1. Declare the mandated stack: Polars as the row-level ETL engine, BigQuery
+     (staging + serving), Cloud Run Job + Cloud Scheduler (autonomous weekly
+     runtime), Google Shared Drive as the sole input channel (service account
+     membership, no GCS sync), Artifact Registry for the container image.
+  2. Enumerate the D-10.x / D-14.x constraints that bind stack choice: D-10.4
+     (staging/serving dataset separation), D-14.1/D-14.2 (Scheduler params,
+     not business rules), D-14.3 (no resource-tier override on the Cloud Run
+     Job), D-14.4 (no domain-wide delegation, no forced GCS sync), D-14.5
+     (atomic write / failure-alerting requirement).
+  3. List the prohibited alternatives explicitly: pandas as the row engine,
+     INT64 (vs. STRING-cast) ids at the BigQuery write boundary, any Cloud Run
+     Job resource override absent an explicit ratified exception, GCS as an
+     input source.
+  4. Exclude executable code and any new rule content beyond what Bloque 3
+     already settled — the file holds reference material only.
+  Done Evidence:
+
 ### FASE 0 - Local Repo & Scaffolding
 #### 0.1 - Enviroment
 
