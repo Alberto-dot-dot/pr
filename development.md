@@ -59,14 +59,15 @@ executes and the work-commit hash is recorded in Done Evidence.
 
 ## Sub-tasks
 
-### Fase 0.1 - Enviroment
+### FASE 0 - Local Repo & Scaffolding
+#### 0.1 - Enviroment
+
 * 0.1.1 — Pin Python interpreter version
 Create .python-version declaring the target interpreter version for local development, matching what the eventual Cloud Run Job container will use.
 Status: [BACKLOG]
 Done Criteria:
 .python-version exists at repo root with a single version string.
 Done Evidence:
-
 
 * 0.1.2 — Create package structure (src-layout)
 Create src/pr/__init__.py. Establishes the importable package skeleton; src-layout forces explicit installation rather than accidental path-based imports.
@@ -148,7 +149,8 @@ One commit contains all scaffolding files.
 git status clean after commit.
 Done Evidence:
 
-### Fase 1.1 — Test Fixtures
+### FASE 1 — Polars Core Pipeline (local)
+#### 1.1 — Test Fixtures
 
 * 1.1.1 — Build valid PR file fixture
   Construct one structurally-correct .xlsx PR fixture: rows 1–5 and cols
@@ -197,7 +199,8 @@ Done Evidence:
   3. Expected recon_nomatch and anomaly-queue rows enumerated.
   Done Evidence:
 
-### Fase 1.2 — Structural Ingestion Gates & Type Contracts
+
+#### 1.2 — Structural Ingestion Gates & Type Contracts
 
 * 1.2.1 — R16 file format gate
   Reject any file that is not a valid binary .xlsx (wrong extension,
@@ -246,7 +249,7 @@ Done Evidence:
   Done Evidence:
 
 
-### Fase 1.3 — USAR Gate
+#### 1.3 — USAR Gate
 
 * 1.3.1 — Implement USAR eviction gate
   Evict every row whose raw USAR ≠ "SI", positioned upstream of 5.1, R1,
@@ -269,7 +272,7 @@ Done Evidence:
      silently dropped (R14 closed-domain assumption).
   Done Evidence:
 
-### Fase 1.4 — Normalization & Obra Derivation
+#### 1.4 — Normalization & Obra Derivation
 
 * 1.4.1 — R3 obra parse
   Extract obra = substring before the first "_" in nombre_programa and
@@ -316,7 +319,7 @@ Done Evidence:
   Done Evidence:
 
 
-### Fase 1.5 — Identity Hashing
+#### 1.5 — Identity Hashing
 
 * 1.5.1 — R1 id_actividad hashing
   Assign id_actividad = FNV-1a-64(actividad_norm), output UInt64, for rows
@@ -361,7 +364,7 @@ Done Evidence:
   Done Evidence:
 
 
-### Fase 1.6 — Tipología Join & Disposition
+#### 1.6 — Tipología Join & Disposition
 
 * 1.6.1 — R7 tipología join
   Join PR against the mapeo on (obra_norm, N1_norm..N5_norm) over _norm
@@ -389,8 +392,7 @@ Done Evidence:
   3. tipologia_status appears in no output schema; the run does not halt.
   Done Evidence:
 
-
-### Fase 1.7 — FECHA Handling
+#### 1.7 — FECHA Handling
 
 * 1.7.1 — R22 active FECHA validation
   A row surviving R14 whose FECHA is null, blank, or does not cast cleanly
@@ -416,7 +418,7 @@ Done Evidence:
   Done Evidence:
 
 
-### Fase 1.8 — stg_matched Assembly & Row-Level Output Contract
+#### 1.8 — stg_matched Assembly & Row-Level Output Contract
 
 * 1.8.1 — Define and pin stg_matched local producer schema
   The Fase 1 Polars frame — the LOCAL, fixture-validated face of stg_matched,
@@ -464,7 +466,8 @@ Done Evidence:
   3. The anomaly artifact's fine schema is explicitly marked deferred.
   Done Evidence:
 
-### Fase 2.1 — Aprovisionamiento base y Despliegue del Cloud Run Job
+### FASE 2 — GCP Infrastructure Provisioning
+#### 2.1 — Aprovisionamiento base y Despliegue del Cloud Run Job
 
 * 2.1.1 — Habilitar APIs de GCP requeridas
   Habilitar Cloud Run Admin API, Cloud Scheduler API, BigQuery API, Artifact Registry API y Google Drive API en el proyecto target. Precondición absoluta de la fase.
@@ -510,7 +513,7 @@ Done Evidence:
   1. Ejecución completa sin error de infraestructura.
   Done Evidence:
 
-### Fase 2.2 — Configuración del disparo programado
+#### 2.2 — Configuración del disparo programado
 
 * 2.2.1 — Crear el Cloud Scheduler job
   Apuntar al endpoint de la Execute API del Job de 2.1.3, no a invocación HTTP directa al contenedor.
@@ -534,7 +537,7 @@ Done Evidence:
   2. Permiso run.jobs.run garantizado a la SA y scoped al Job específico, sin permisos a nivel de proyecto ni acceso HTTP genérico.
   Done Evidence:
 
-### Fase 2.3 — Autenticación de la Service Account contra Shared Drive
+#### 2.3 — Autenticación de la Service Account contra Shared Drive
 
 * 2.3.1 — Crear/identificar la service account del Job
   Identidad runtime que utilizará el pipeline para la lectura en Drive y escritura en BQ.
@@ -558,7 +561,7 @@ Done Evidence:
   1. Ningún mecanismo de sync automático a GCS está configurado.
   Done Evidence:
 
-### Fase 2.4 — Provisión de datasets BigQuery (container-level, D-10.4)
+#### 2.4 — Provisión de datasets BigQuery (container-level, D-10.4)
 
 * 2.4.1 — Crear dataset de staging oculto (pr_staging)
   Status: [BACKLOG]
@@ -587,7 +590,7 @@ Done Evidence:
   1. Nota de frontera escrita y referenciada desde el roadmap de Fase 4.
   Done Evidence:
 
-### Fase 2.5 — Verificación de aprovisionamiento y contrato de salida
+#### 2.5 — Verificación de aprovisionamiento y contrato de salida
 
 * 2.5.1 — Prueba real de lectura de Shared Drive vía la SA
   Listar el contenido de una carpeta de prueba genérica, validando que la Drive API responde correctamente.
@@ -617,7 +620,8 @@ Done Evidence:
   1. Contrato de salida escrito y referenciado desde la entrada de Fase 3.
   Done Evidence:
 
-### Phase 3.1
+### FASE 3 — Live Drive File Resolution
+#### 3.1 — Production Image Build & Job Redeployment
 
 * 3.1.1 — Package Fase 1 pipeline into production image
 Build a container image from src/pr/ using Fase 0's pinned requirements.txt.
@@ -658,7 +662,7 @@ Done Criteria:
 Done Evidence:
 
 
-### Phase 3.2
+#### Paso 3.2 — Precondition Gate: Mapeo-Folder Accessibility (R31) ∥ PR-Vigente Resolution (R23–R26)
 
 > Retry posture (proposed, reversible): retry count (3) and inter-attempt delay are
 > DEPLOYMENT PARAMETERS, not hardcoded constants — homologous to D-14.2's treatment of
@@ -719,8 +723,7 @@ Done Criteria:
 3. No Polars row-level processing (5.1, R14, R1/R6, R7) executes before this barrier lifts.
 Done Evidence:
 
-
-### Paso 3.3
+#### Paso 3.3 — Per-Obra Mapeo Presence Resolution (R32)
 
 * 3.3.1 — R32: normalized per-obra mapeo filename match
 Status: [BACKLOG]
@@ -747,9 +750,7 @@ Done Criteria:
 3. Excluded obras (3.3.2) are absent from the set handed to the join.
 Done Evidence:
 
-
-### Phase 3.4
-
+#### Paso 3.4 — Live Resolution Verification & Exit Contract toward Fase 4
 * 3.4.1 — Single-obra live resolution cycle
 Status: [BACKLOG]
 Done Criteria:
@@ -765,12 +766,14 @@ Done Criteria:
 2. Any divergence between fixture and live behavior is treated as a blocking defect, not an accepted variance.
 Done Evidence:
 
-* 3.4.3 — Real staging write with run_date
+* 3.4.3 — Real staging write with run_date and BigQuery type mapping
 Status: [BACKLOG]
 Done Criteria:
 1. A real WRITE_TRUNCATE write to stg_matched and recon_nomatch in pr_staging occurs from live-resolved data.
 2. run_date is stamped on every row of both tables, single value for the run (R27).
-3. Write is atomic per D-14.5: it executes only because no abort gate fired in this cycle.
+3. id_actividad and id_tipologia are cast from UInt64 to STRING (decimal representation) in both tables' BigQuery target schema, avoiding INT64 signed overflow — ~50% of FNV-1a-64 hashes exceed INT64 max (S19).
+4. The BigQuery stg_matched target schema is exactly the 10-column contract: obra STRING, obra_norm STRING, estatus_c_cloud STRING, estatus_c_cloud_norm STRING, nombre_actividad STRING, id_actividad STRING, tipologia STRING, id_tipologia STRING, fecha DATE, run_date DATE.
+5. Write is atomic per D-14.5: it executes only because no abort gate fired in this cycle.
 Done Evidence:
 
 * 3.4.4 — Abort/exclusion path injection
@@ -792,99 +795,4 @@ Done Criteria:
 3. The two-track gate behavior and the per-obra exclusion are recorded as verified, not assumed.
 Done Evidence:
 
-### Paso 4.1
 
-* 4.1.1 — T1 view (Append PR Finalizado)
-Done Criteria:
-1. View in pr_serving; reads stg_matched (pr_staging) only.
-2. WHERE estatus_c_cloud_norm IN ('finalizada','2da_revision','con_fallas',
-   'revisada','en_proceso') (R9). All members non-null literals.
-3. GROUP BY obra_norm, id_actividad, id_tipologia, run_date (R4-T1 + R27).
-4. SELECT obra_norm AS obra, id_actividad, id_tipologia,
-   COUNT(*) AS count_unidades, run_date.
-5. run_date passthrough — not re-stamped or transformed (R27).
-6. Output types: obra STRING, ids STRING (pending id-type decision),
-   count_unidades INT64, run_date DATE.
-
-* 4.1.2 — T2 view (Append PR Programado)
-Done Criteria:
-1. View in pr_serving; reads stg_matched only.
-2. WHERE estatus_c_cloud_norm IN ('nueva','0','') OR estatus_c_cloud_norm IS NULL
-   (R10 — NULL and '' are explicit R10 members; the IS NULL arm is required,
-   a bare IN-list silently drops them).
-3. GROUP BY obra_norm, id_actividad, id_tipologia, fecha, run_date (R4-T2 + R27).
-4. SELECT obra_norm AS obra, id_actividad, id_tipologia, fecha,
-   COUNT(*) AS count_unidades, run_date.
-5. count_unidades distribution across fecha preserved, never collapsed (R4-T2).
-6. fecha non-null by upstream guarantee (R22); types as 4.1.1 + fecha DATE.
-
-
-* 4.2.1 — T3 view (denormalized report)
-Done Criteria:
-1. View in pr_serving; reads stg_matched only; row-level, no aggregation (R15/R20).
-2. WHERE row is routed to R9∪R10 — equivalently NOT residual:
-   estatus_c_cloud_norm IN (<R9 ∪ R10 non-null set>) OR estatus_c_cloud_norm IS NULL.
-3. SELECT obra, estatus_c_cloud AS estatus, nombre_actividad, tipologia, fecha,
-   run_date — all raw passthrough (R12/R15/R20), run_date metadata.
-4. No normalization/transformation on any selected column.
-5. Types: obra/estatus/nombre_actividad/tipologia STRING; fecha DATE; run_date DATE.
-
-* 4.3.1 — R30 residual exception view (row-level)
-Done Criteria:
-1. View in pr_staging — NOT pr_serving (isolation perimeter, R29/R30); never
-   added to the authorized-view grant.
-2. Reads stg_matched only; row-level, raw identifying columns (symmetric to T3).
-3. WHERE estatus_c_cloud_norm IS NOT NULL
-   AND estatus_c_cloud_norm NOT IN ('finalizada','2da_revision','con_fallas',
-   'revisada','en_proceso','nueva','0','').
-   The IS NOT NULL guard is mandatory: NULL is an R10 member (Programado), not
-   residual; a bare NOT IN over NULL would mis-route it (R11 = complement of R9∪R10).
-4. SELECT obra, estatus_c_cloud AS estatus, nombre_actividad, tipologia, fecha,
-   run_date (raw, for upstream correction by the system owner).
-5. No persisted artifact beyond the view; the view is the sole residual surface.
-
-* 4.4.1 — Authorize serving views against pr_staging
-Done Criteria:
-1. T1, T2, T3 (pr_serving) added to pr_staging's authorized-views access list.
-2. R30 NOT added — same-dataset view, no cross-dataset grant, must not be exposed.
-3. Grant covers exactly the three serving views, nothing else.
-
-* 4.4.2 — Confirm authorization effective
-Done Criteria:
-1. T1/T2/T3 each return rows on query — the transient unqueryable window is cleared.
-2. pr_staging access list contains only T1/T2/T3 as authorized views; no analyst
-   principal present (analyst IAM is Fase 5, on pr_serving).
-3. R30 confirmed absent from any outward grant.
-
-* 4.5.1 — Verify T1/T2 aggregation against live stg_matched
-Done Criteria:
-1. T1 grain = (obra_norm, id_actividad, id_tipologia, run_date); T2 = + fecha;
-   no duplicate grain rows.
-2. count_unidades = row count per group; sums reconcile to live source counts.
-3. run_date single value per snapshot, present in the grain.
-
-* 4.5.2 — Verify T3 passthrough against live stg_matched
-Done Criteria:
-1. Row count = MATCHED rows routed to R9∪R10; residual rows absent.
-2. Raw values byte-match source (no normalization leaked).
-3. fecha and run_date both present, distinct, unrelated (R27 vs R19–R22).
-
-* 4.5.3 — Verify R30 residual + routing-partition exhaustiveness
-Done Criteria:
-1. R30 captures exactly MATCHED rows with non-null unrecognized
-   estatus_c_cloud_norm; NULL/'' rows absent (they are R10).
-2. Routing partition is exhaustive and disjoint: every MATCHED row falls into
-   exactly one of {R9, R10, residual}; T1∪T2 row population + R30 row population
-   = total MATCHED rows. No row lost, no double-count.
-3. R30 not reachable via the serving grant.
-
-* 4.5.4 — Verify run_date passthrough-only
-Done Criteria:
-1. run_date in every view equals the Polars-stamped value in stg_matched; no view
-   re-stamps or transforms it (R27; stamping was Fase 3, 3.4.3).
-
-* 4.5.5 — Exit contract to Fase 5
-Done Criteria:
-1. T1/T2/T3 + R30 validated against live data.
-2. No residual Fase 4 dependency; remaining wiring (analyst IAM grant R29,
-   PQ/Connected Sheets connectors R28, PQ/M retirement) is Fase 5 scope only.
